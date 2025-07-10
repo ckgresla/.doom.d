@@ -41,6 +41,19 @@
 (require 'kaolin-themes)
 (require 'ef-themes)
 
+(defun my/apply-theme (appearance)
+  "Load theme, taking current system APPEARANCE into consideration."
+  (mapc #'disable-theme custom-enabled-themes)
+  (pcase appearance
+    ('light (load-theme 'modus-operandi t))
+    ('dark (load-theme 'doom-meltbus t))))
+
+(add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
+
+
+;; native fullscreen behavior on macos -- emacs-plus things
+(setq ns-use-native-fullscreen t)
+
 
 ;; This determines the style of line numbers in effect. If set to `nil', line
 ;; numbers are disabled. For relative line numbers, set this to `relative'.
@@ -88,6 +101,9 @@
 
 ;; CKG's Config
 
+(add-to-list 'initial-frame-alist '(width . 120))
+(add-to-list 'initial-frame-alist '(height . 70))
+
 ;; auto-open the hidden long outputs in compilation buffers
 (after! compile
   (setq compilation-max-output-line-length nil)
@@ -115,9 +131,14 @@
       "ZQ" #'with-editor-cancel)))
 
 
+;; markdown mode, continue indentation and items on `RET'
+(after! markdown-mode
+  (setq markdown-indent-on-enter 'indent-and-new-item))
+
+
 ;; override default doom yank file path, force fullpath, avoid abbreviating home dir as: "~", and strip TRAMP prefixes (i.e: "/sshx:")
 (defun ckg/yank-buffer-or-dir-full-path ()
-  "Copy buffer's full file or directory path, stripping TRAMP method but keeping hostname. For directories, strip trailing slash."
+  "Copy buffer's full file or dir path, stripping TRAMP prefix but keeping hostname"
   (interactive)
   (let* ((filename (or (buffer-file-name)
                        (and (eq major-mode 'dired-mode)
@@ -180,11 +201,6 @@
        :desc "Increase font size" "+" #'default-text-scale-increase
        :desc "Decrease font size" "-" #'default-text-scale-decrease
        :desc "Reset font size"    "0" #'default-text-scale-reset))
-
-
-;; hjkl for buffer movement (move buffer to window in direction and retain focus on that window, creating window if no exist)
-;; + remap binding to open last buffer
-;; TODO@CKG --> thou art right here with that new bindings for buffer movement bit...
 
 
 ;; vim
@@ -309,7 +325,7 @@
 
 
 ;; enable custom.el file
-(setq custom-file (expand-file-name "custom.el" doom-private-dir))
+(setq custom-file (expand-file-name "custom.el" doom-user-dir))
 (when (file-exists-p custom-file)
   (load custom-file))
 
