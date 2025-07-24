@@ -121,6 +121,12 @@
         :desc "Grep" "g" #'grep
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
 
+;; nicer lookup binding
+(map! :leader "s k" #'+lookup/documentation)
+;; `occur' is a wonderful emacs command
+(map! :leader
+      (:prefix-map ("s" . "search")
+       :desc "Occur" "o" #'occur))
 
 
 ;; in magit, write/close commits with ':wq' as opposed to only "C-c C-c"
