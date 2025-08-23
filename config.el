@@ -21,10 +21,10 @@
 ;; See 'C-h v doom-font' for documentation and more examples of what they
 ;; accept. For example:
 ;;
-(setq doom-font (font-spec :family "JetBrains Mono NL" :size 12 :weight 'semi-light)
-     doom-variable-pitch-font (font-spec :family "JetBrains Mono NL" :size 12))
+(setq doom-font (font-spec :family "JetBrains Mono" :size 12)
+      doom-variable-pitch-font (font-spec :family "Inter" :size 12)
+      doom-big-font (font-spec :family "JetBrains Mono" :size 18))
 
-;;
 ;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
 ;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
 ;; refresh your font settings. If Emacs still can't find your font, it likely
@@ -33,7 +33,8 @@
 ;; There are two ways to load a theme. Both assume the theme is installed and
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
-(setq doom-theme 'modus-operandi)
+(setq doom-theme 'doom-flatwhite)
+;; (setq doom-theme 'modus-operandi)
 ;; (setq doom-theme 'doom-plain)
 ;; (setq doom-theme 'doom-monokai-ristretto)
 ;; (setq doom-theme 'doom-one-light)
@@ -62,7 +63,8 @@
 
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
-(setq org-directory "~/org/")
+;; ya organize your life in plain-text right?
+(setq org-directory "~/life/org")
 
 
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
@@ -136,6 +138,10 @@
       "ZZ" #'with-editor-finish
       "ZQ" #'with-editor-cancel)))
 
+;; the magic of browse-at-remote, quickly
+(map! :leader
+      "S-<return>" #'browse-at-remote)
+
 
 ;; markdown mode, continue indentation and items on `RET'
 (after! markdown-mode
@@ -180,6 +186,15 @@
 
 ;; enable soft wrapping of lines globally
 (global-visual-line-mode 1)
+
+;; scrolling so smooth, "i cannot believe its not butter"
+(use-package! ultra-scroll
+  :init
+  (setq scroll-conservatively 3    ; or whatever value you prefer
+        scroll-margin 0)           ; important: scroll-margin>0 not yet supported
+  :config
+  (ultra-scroll-mode 1))
+
 
 ;; bind option+del and cmd+del (not backspace but del) to delete the next word/line, similar to default on MacOS
 (global-set-key (kbd "M-<delete>") 'kill-word)
@@ -336,55 +351,26 @@
   (load custom-file))
 
 
-;; TODO@CKG: need setup dev env, local and remote with python -- lsp, conda, et al...
-;; conda config
-(use-package! conda
-  :config
-  ;; Set the location of your conda installation
-  (setq conda-anaconda-home "/Users/ckg/miniconda/condabin/conda")
 
-  ;; Activate conda on startup
-  (conda-env-initialize-interactive-shells)
-  (conda-env-initialize-eshell)
-
-  )
+;; Fix vterm shell for TRAMP - use login shell on remote
+(setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
 
 
-;; LSP-Bridge configuration
-(use-package! lsp-bridge
-  :disabled t  ;; TODO: I should take an afternoon and set this up properly, right now it is just borked...
-  :config
-  (global-lsp-bridge-mode)
 
-  ;; Configure Python language server
-  (setq lsp-bridge-python-lsp-server "basedpyright")
-
-  ;; For remote development via TRAMP
-  (setq lsp-bridge-enable-with-tramp t)
-  (setq lsp-bridge-enable-remote-support t)
-  (setq lsp-bridge-remote-wait-timeout 5)
-
-  ;; Key bindings
-  (map! :map lsp-bridge-mode-map
-        :leader
-        (:prefix ("l" . "lsp")
-         :desc "Find definition" "d" #'lsp-bridge-find-def
-         :desc "Find references" "r" #'lsp-bridge-find-references
-         :desc "Find implementation" "i" #'lsp-bridge-find-impl
-         :desc "Rename" "R" #'lsp-bridge-rename
-         :desc "Format document" "f" #'lsp-bridge-code-format
-         :desc "Hover documentation" "h" #'lsp-bridge-show-documentation)))
-
-
+;; LSP Configurations
 ;; configure LSP to show symbol info on mouse hover
 (setq lsp-ui-doc-enable t)
 (setq lsp-ui-doc-show-with-mouse t)
+;; watch files + increase default threshold
+(after! lsp-mode
+  (setq lsp-enable-file-watchers t)
+  (setq lsp-file-watch-threshold 10000))
 
-;; MyPy configuration
+;; Python
 (require 'flycheck-mypy)
 (add-hook 'python-mode-hook 'flycheck-mode)
 
-;; LSP configuration for Rust
+;; Rust
 (after! lsp-rust
   (setq lsp-rust-analyzer-server-command '("/Users/ckg/.cargo/bin/rust-analyzer")))
 
@@ -398,7 +384,6 @@
 (setenv "PATH" (concat "/Users/ckg/.cargo/bin:" (getenv "PATH")))
 
 
-
 ;; CUDA config
 ;; Configure cuda-mode for proper file associations
 (use-package! cuda-mode
@@ -407,6 +392,8 @@
   :config
   ;; Optional: if you want .h files in CUDA projects to be treated as C++ headers
   (add-to-list 'auto-mode-alist '("\\.h\\'" . c++-mode)))
+
+
 
 
 ;; evil-easymotion -- function and form
@@ -470,9 +457,31 @@
 ;;  'remote-conda-profile
 ;;  '((process-environment . ("PATH=/opt/miniconda/wafer/bin:/usr/local/bin:/usr/bin:/bin"
 ;;                           "CONDA_DEFAULT_ENV=wafer"))))
-
 ;; (connection-local-set-profiles
 ;;  '(:application tramp :protocol "sshx")
 ;;  'remote-conda-profile)
+
+
+
+(after! compile
+  (setq compilation-shell-minor-mode t)
+
+  ;; Custom compilation environment
+  (defun my/compilation-setup ()
+    "Setup compilation with login shell environment."
+    (setq-local shell-file-name "/bin/zsh")
+    (setq-local shell-command-switch "-lc"))
+
+  (add-hook 'compilation-mode-hook #'my/compilation-setup))
+
+
+
+
+
+;; FIXES
+; as of 2025-07-10, emacs-plus doesn't jive w MacOS's sed cmd (regex issue)
+;; solution, is to use gnu sed instead, get it with: `brew install gnu-sed'
+(setq Man-sed-command "gsed")
+
 
 

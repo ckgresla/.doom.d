@@ -50,7 +50,7 @@
 
 
 ;; CKG Packages
-(package! conda)
+;; (package! conda)
 (package! flycheck-mypy)
 
 (package! default-text-scale)
@@ -74,3 +74,6 @@
 
 ;; CUDA -- make GPUs go brrr
 (package! cuda-mode)
+;; scroll -- like its the 2020s
+;; https://github.com/jdtsmith/ultra-scroll
+(package! ultra-scroll)
