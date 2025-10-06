@@ -34,19 +34,25 @@
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
 (setq doom-theme 'doom-flatwhite)
-;; (setq doom-theme 'modus-operandi)
-;; (setq doom-theme 'doom-plain)
-;; (setq doom-theme 'doom-monokai-ristretto)
-;; (setq doom-theme 'doom-one-light)
-;; (setq doom-theme 'doom-one)
 (require 'kaolin-themes)
 (require 'ef-themes)
 
 (defun my/apply-theme (appearance)
-  "Load theme, taking current system APPEARANCE into consideration."
+  "
+  Load theme, taking current system APPEARANCE into consideration.
+  the good looking themes:
+  - modus-operandi
+  - modus-vivendi
+  - doom-plain
+  - doom-monokai-ristretto
+  - doom-homage-white
+  - doom-homage-black
+  - doom-one-light
+  - doom-one
+  "
   (mapc #'disable-theme custom-enabled-themes)
   (pcase appearance
-    ('light (load-theme 'modus-operandi t))
+    ('light (load-theme 'doom-flatwhite t))
     ('dark (load-theme 'doom-meltbus t))))
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
@@ -356,6 +362,15 @@
 (setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
 
 
+;; magit -- the best git
+(after! magit
+  ;; don't show the diff by default in the commit buffer. Use `spc g s' to display it
+  (setq magit-commit-show-diff nil)
+  ;; don't show git variables in magit branch
+  (setq magit-branch-direct-configure nil)
+  ;; don't automatically refresh the status buffer after running a git command
+  (setq magit-refresh-status-buffer nil)
+)
 
 ;; LSP Configurations
 ;; configure LSP to show symbol info on mouse hover
