@@ -113,6 +113,9 @@
 (add-to-list 'initial-frame-alist '(width . 120))
 (add-to-list 'initial-frame-alist '(height . 70))
 
+;; explicitly set inhertiance of tags in org
+(setq org-use-tag-inheritance t)
+
 ;; auto-open the hidden long outputs in compilation buffers
 (after! compile
   (setq compilation-max-output-line-length nil)
@@ -518,3 +521,73 @@
 
 
 
+;; WIP: org mode setup
+;; after write markup, just style text, don't display the org special markup
+(setq org-hide-emphasis-markers t)
+
+(after! org
+  ;; todo states? any order is okay for parent TODOs being completed
+  (setq org-enforce-todo-dependencies nil)
+  ;; natural language datetime refs, for scheduling
+  (setq org-read-date-prefer-future 'time)
+  )
+
+
+;; cleaner view for org-agenda, no full day laid out
+(after! org-agenda
+  ;; Set 10-day span
+  (setq org-agenda-span 10)
+
+  ;; Start from today
+  (setq org-agenda-start-on-weekday nil)
+
+  ;; Disable time grid completely (removes the hour lines and "now" indicator)
+  (setq org-agenda-use-time-grid nil))
+
+;; dump all completed/archived todos in one megafile, with each todo
+;; nested in a section named by its originating file
+(setq org-archive-location "~/life/org/archive.org::* From `%s`")
+
+;; TODO@CKG: figure out an `org-capture' setup that works
+;; globally -- on macos and android
+;; (after! org
+;;   ;; Enable org-protocol for browser integration
+;;   (require 'org-protocol)
+
+;;   ;; Start server automatically - corrected version
+;;   (unless (and (fboundp 'server-running-p) (server-running-p))
+;;     (server-start)))
+;; ;;; Org Capture Frame Setup
+;; (after! org
+;;   (defun my/org-capture-frame ()
+;;     "Full-window org-capture frame."
+;;     (switch-to-buffer "*scratch*")
+;;     (delete-other-windows)
+;;     (setq mode-line-format nil)
+
+;;     ;; Override pop-to-buffer during org-capture
+;;     (cl-letf (((symbol-function 'pop-to-buffer)
+;;                (lambda (buffer &rest _)
+;;                  (switch-to-buffer buffer)
+;;                  (delete-other-windows)
+;;                  (setq mode-line-format nil))))
+;;       (org-capture)))
+
+;;   (defun my/quit-capture-frame ()
+;;     "Quit and close frame."
+;;     (interactive)
+;;     (condition-case nil
+;;         (org-capture-kill)
+;;       (error nil))
+;;     (delete-frame))
+
+;;   ;; Bind q in capture mode
+;;   (add-hook 'org-capture-mode-hook
+;;             (lambda ()
+;;               (local-set-key (kbd "q") 'my/quit-capture-frame)))
+
+;;   ;; Close frame when done
+;;   (add-hook 'org-capture-after-finalize-hook
+;;             (lambda ()
+;;               (when (string= (frame-parameter nil 'title) "org-capture")
+;;                 (delete-frame)))))
