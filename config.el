@@ -109,6 +109,7 @@
 
 ;; CKG's Config
 
+;; initial frame/application window size on MacOS
 (add-to-list 'initial-frame-alist '(width . 120))
 (add-to-list 'initial-frame-alist '(height . 70))
 
@@ -128,6 +129,11 @@
         :desc "Async Shell Command" "a" #'async-shell-command
         :desc "Grep" "g" #'grep
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
+
+;; pdf mode, inter-page navigation
+(map! :map pdf-view-mode-map
+      :n "H" #'pdf-view-previous-page
+      :n "L" #'pdf-view-next-page)
 
 ;; nicer lookup binding
 (map! :leader "s k" #'+lookup/documentation)
@@ -288,7 +294,7 @@
   (setq projectile-kill-buffers-filter 'projectile-kill-buffers-filter-none))
 
 
-;; TRAMP -- better remote development
+;; TRAMP -- its remote development for emacs
 (require 'tramp)
 (setq tramp-default-method "sshx")  ;; using gui emacs
 (setq tramp-auto-save-directory "~/.emacs.d/tramp-autosave")
@@ -313,8 +319,25 @@
       (read-only-mode -1)
       (message "Made remote buffer writable: %s" buffer-file-name)))
 
+  ;; perf optimizations taken from this hacker's blog post-
+  ;; https://coredumped.dev/2025/06/18/making-tramp-go-brrrr./
+  (setq tramp-copy-size-limit (* 1024 1024)  ;; 1MB
+        tramp-verbose 2)
 
-)
+  (connection-local-set-profile-variables
+        'remote-direct-async-process
+        '((tramp-direct-async-process . t)))
+
+  (connection-local-set-profiles
+        '(:application tramp :protocol "scp")
+        'remote-direct-async-process)
+
+  (setq magit-tramp-pipe-stty-settings 'pty)
+
+  (with-eval-after-load 'tramp
+        (with-eval-after-load 'compile
+        (remove-hook 'compilation-mode-hook #'tramp-compile-disable-ssh-controlmaster-options)))
+        )
 
 ;; Add to multiple hooks
 ;; (add-hook 'find-file-hook #'+make-remote-writable-if-possible)
@@ -361,15 +384,25 @@
 ;; Fix vterm shell for TRAMP - use login shell on remote
 (setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
 
+;; use remote shell history with vterm
+(after! vterm
+  ;; Make sure vterm doesn't interfere with shell history
+  (setq vterm-shell (getenv "SHELL"))
+  ;; Ensure HISTFILE is set correctly for the shell
+  (setq vterm-environment
+        '("TERM=xterm-256color")))
+;; For remote connections, ensure tramp uses the right shell
+(after! tramp
+  (setq tramp-histfile-override nil))  ; Don't override history file
+
+
 
 ;; magit -- the best git
 (after! magit
-  ;; don't show the diff by default in the commit buffer. Use `spc g s' to display it
+  ;; don't show the diff by default in the commit buffer.
   (setq magit-commit-show-diff nil)
-  ;; don't show git variables in magit branch
-  (setq magit-branch-direct-configure nil)
   ;; don't automatically refresh the status buffer after running a git command
-  (setq magit-refresh-status-buffer nil)
+  ;; (setq magit-refresh-status-buffer nil)
 )
 
 ;; LSP Configurations
@@ -460,21 +493,6 @@
 ;;   (after! consult
 ;;     (setq consult-locate-args "mdfind")))
 
-
-
-;; A DEMONSTRATION -- of how IT IS fucking possible to have something sane in TRAMP work with conda environments...
-;; is this even possible...
-;; Add to TRAMP remote path
-;; (add-to-list 'tramp-remote-path "/opt/miniconda/wafer/bin")
-
-;; ;; Set environment for remote connections
-;; (connection-local-set-profile-variables
-;;  'remote-conda-profile
-;;  '((process-environment . ("PATH=/opt/miniconda/wafer/bin:/usr/local/bin:/usr/bin:/bin"
-;;                           "CONDA_DEFAULT_ENV=wafer"))))
-;; (connection-local-set-profiles
-;;  '(:application tramp :protocol "sshx")
-;;  'remote-conda-profile)
 
 
 
