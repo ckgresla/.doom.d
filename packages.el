@@ -72,6 +72,9 @@
 (package! yasnippet)
 (package! posframe)
 
+;; justfiles, don't abuse the make
+(package! just-mode)
+
 ;; CUDA -- make GPUs go brrr
 (package! cuda-mode)
 ;; scroll -- like its the 2020s

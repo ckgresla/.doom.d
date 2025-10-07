@@ -434,6 +434,8 @@
 (add-to-list 'exec-path "/Users/ckg/.cargo/bin")
 (setenv "PATH" (concat "/Users/ckg/.cargo/bin:" (getenv "PATH")))
 
+;; justfiles
+(use-package! just-mode)
 
 ;; CUDA config
 ;; Configure cuda-mode for proper file associations
