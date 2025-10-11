@@ -57,6 +57,15 @@
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
 
+;; if dark mode, enable midnight mode for opened pdfs
+(defun my/toggle-pdf-midnight-mode ()
+  "Enable pdf-view-midnight-minor-mode if system is in dark mode."
+  (when (and (boundp 'ns-system-appearance)
+             (eq ns-system-appearance 'dark))
+    (pdf-view-midnight-minor-mode 1)))
+
+(add-hook 'pdf-view-mode-hook #'my/toggle-pdf-midnight-mode)
+
 
 ;; native fullscreen behavior on macos -- emacs-plus things
 (setq ns-use-native-fullscreen t)
