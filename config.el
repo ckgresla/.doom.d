@@ -543,6 +543,40 @@
   (setq org-read-date-prefer-future 'time)
   )
 
+;; Backtick inline code support for org-mode
+(after! org
+  ;; Copy org-quote style but force normal (non-italic) slant
+  (defface org-code-inline
+    '((t (:inherit (org-quote fixed-pitch) :slant normal :weight normal)))
+    "Face for inline code delimited by backticks."
+    :group 'org-faces)
+
+  ;; Add font-lock keyword for backticks
+  (defun my/org-add-backtick-emphasis ()
+    "Add backtick emphasis to org-mode."
+    (font-lock-add-keywords nil
+      '(("`\\([^`\n]+\\)`"
+         (0 (let* ((hide-markers (and (boundp 'org-hide-emphasis-markers)
+                                     org-hide-emphasis-markers))
+                   (match-data (match-data)))
+              (when hide-markers
+                (add-text-properties (match-beginning 0) (1+ (match-beginning 0))
+                                    '(invisible org-link))
+                (add-text-properties (1- (match-end 0)) (match-end 0)
+                                    '(invisible org-link)))
+              (add-text-properties (match-beginning 1) (match-end 1)
+                                  '(face org-code-inline))
+              (set-match-data match-data)
+              nil))))
+      'append))
+
+  ;; Add to org-mode-hook
+  (add-hook 'org-mode-hook #'my/org-add-backtick-emphasis))
+
+
+
+
+
 
 ;; cleaner view for org-agenda, no full day laid out
 (after! org-agenda
