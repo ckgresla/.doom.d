@@ -49,11 +49,12 @@
   - doom-homage-black
   - doom-one-light
   - doom-one
+  - doom-meltbus
   "
   (mapc #'disable-theme custom-enabled-themes)
   (pcase appearance
     ('light (load-theme 'doom-flatwhite t))
-    ('dark (load-theme 'doom-meltbus t))))
+    ('dark (load-theme 'doom-tomorrow-night t))))
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
 
@@ -545,11 +546,20 @@
 
 ;; Backtick inline code support for org-mode
 (after! org
-  ;; Copy org-quote style but force normal (non-italic) slant
+  ;; Create face that properly scales with text-scale-adjust
   (defface org-code-inline
-    '((t (:inherit (org-quote fixed-pitch) :slant normal :weight normal)))
+    '((t (:inherit (org-quote) :family nil :height 1.0 :slant normal :weight normal)))
     "Face for inline code delimited by backticks."
     :group 'org-faces)
+
+  ;; Alternative: inherit from default instead of fixed-pitch
+  ;; This ensures the face scales properly
+  (set-face-attribute 'org-code-inline nil
+                      :inherit '(org-quote)
+                      :family (face-attribute 'fixed-pitch :family)
+                      :height 1.0  ; Relative height (1.0 = same as default)
+                      :slant 'normal
+                      :weight 'normal)
 
   ;; Add font-lock keyword for backticks
   (defun my/org-add-backtick-emphasis ()
