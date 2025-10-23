@@ -143,6 +143,11 @@
         :desc "Grep" "g" #'grep
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
 
+(map! :leader
+      (:prefix "t"
+        :desc "Toggle Mode Line in Buffer" "m" #'hide-mode-line-mode))
+
+
 ;; pdf mode, inter-page navigation
 (map! :map pdf-view-mode-map
       :n "H" #'pdf-view-previous-page
