@@ -218,12 +218,14 @@
 (global-visual-line-mode 1)
 
 ;; scrolling so smooth, "i cannot believe its not butter"
-(use-package! ultra-scroll
-  :init
-  (setq scroll-conservatively 3    ; or whatever value you prefer
-        scroll-margin 0)           ; important: scroll-margin>0 not yet supported
-  :config
-  (ultra-scroll-mode 1))
+;; check that the package is installed before init -- not a terminal thing!
+(when (featurep 'ultra-scroll)
+  (use-package! ultra-scroll
+    :init
+    (setq scroll-conservatively 3
+          scroll-margin 0)
+    :config
+    (ultra-scroll-mode 1)))
 
 
 ;; bind option+del and cmd+del (not backspace but del) to delete the next word/line, similar to default on MacOS
