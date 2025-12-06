@@ -437,6 +437,8 @@
 ;; Python
 (require 'flycheck-mypy)
 (add-hook 'python-mode-hook 'flycheck-mode)
+;; "based"
+(setq lsp-pyright-langserver-command "basedpyright")
 
 ;; Rust
 (after! lsp-rust
