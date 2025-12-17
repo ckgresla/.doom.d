@@ -141,6 +141,9 @@
         :desc "Shell Command" "s" #'shell-command
         :desc "Async Shell Command" "a" #'async-shell-command
         :desc "Grep" "g" #'grep
+        :desc "Code fix" "f" #'lsp-execute-code-action
+        :desc "Code format" "F" #'lsp-format-buffer
+        :desc "Lsp minimap" "m" #'lsp-ui-imenu
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
 
 (map! :leader
