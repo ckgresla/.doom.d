@@ -437,6 +437,34 @@
   (setq lsp-enable-file-watchers t)
   (setq lsp-file-watch-threshold 10000))
 
+;; match theme colors in `lsp-ui-imenu'
+(after! lsp-ui
+  ;; Set colors from Doom theme that will be evaluated when lsp-ui-imenu is called
+  (setq lsp-ui-imenu-colors
+        (list (doom-color 'blue)
+              (doom-color 'magenta)
+              (doom-color 'violet)
+              (doom-color 'cyan)
+              (doom-color 'yellow)
+              (doom-color 'orange)
+              (doom-color 'green)
+              (doom-color 'teal)))
+
+  ;; Refresh colors when theme changes
+  (defun my/refresh-lsp-ui-imenu-colors ()
+    "Update lsp-ui-imenu colors from current Doom theme."
+    (setq lsp-ui-imenu-colors
+          (list (doom-color 'blue)
+                (doom-color 'magenta)
+                (doom-color 'violet)
+                (doom-color 'cyan)
+                (doom-color 'yellow)
+                (doom-color 'orange)
+                (doom-color 'green)
+                (doom-color 'teal))))
+
+  (add-hook 'doom-load-theme-hook #'my/refresh-lsp-ui-imenu-colors))
+
 ;; Python
 (require 'flycheck-mypy)
 (add-hook 'python-mode-hook 'flycheck-mode)
