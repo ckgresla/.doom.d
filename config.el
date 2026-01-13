@@ -33,7 +33,13 @@
 ;; There are two ways to load a theme. Both assume the theme is installed and
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
-(setq doom-theme 'doom-flatwhite)
+;; (setq doom-theme 'doom-flatwhite)
+(setq doom-theme 'doom-challenger-deep)
+;; (setq doom-theme 'modus-operandi)
+;; (setq doom-theme 'doom-plain)
+;; (setq doom-theme 'doom-monokai-ristretto)
+;; (setq doom-theme 'doom-one-light)
+;; (setq doom-theme 'doom-one)
 (require 'kaolin-themes)
 (require 'ef-themes)
 
@@ -464,6 +470,14 @@
                 (doom-color 'teal))))
 
   (add-hook 'doom-load-theme-hook #'my/refresh-lsp-ui-imenu-colors))
+
+;; remove all watched folders, a nice cleanup method
+(defun my/lsp-clean-all-workspace-folders ()
+  "Remove all LSP workspace folders."
+  (interactive)
+  (let ((folders (lsp-session-folders (lsp-session))))
+    (dolist (folder folders)
+      (lsp-workspace-folders-remove folder))))
 
 ;; Python
 (require 'flycheck-mypy)
