@@ -59,8 +59,11 @@
   "
   (mapc #'disable-theme custom-enabled-themes)
   (pcase appearance
-    ('light (load-theme 'doom-flatwhite t))
-    ('dark (load-theme 'doom-tomorrow-night t))))
+    ;; ('light (load-theme 'doom-flatwhite t))
+    ;; ('dark (load-theme 'doom-tomorrow-night t))
+    ('light (load-theme 'doom-homage-white t))
+    ('dark (load-theme 'doom-homage-black t))
+  ))
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
 
