@@ -413,8 +413,16 @@
 
 
 
+;; vterm
 ;; Fix vterm shell for TRAMP - use login shell on remote
 (setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
+
+;; send literal escape to vterm, on shift+escape (ahem, claude code tui)
+(after! vterm
+  (define-key vterm-mode-map (kbd "S-<escape>")
+    (lambda ()
+      (interactive)
+      (vterm-send-key "<escape>"))))
 
 ;; use remote shell history with vterm
 (after! vterm
