@@ -90,3 +90,50 @@ rebind the buffer to that path so subprocesses can read it."
 ;; :before advice runs before pdf-view-mode talks to epdfinfo, so by
 ;; the time the subprocess sees the path, it's a real file.
 (advice-add 'pdf-view-mode :before #'my/pdf-android-materialize-content-uri)
+
+
+;; ----- pdf-view memory + wheel-throttle (Android phone tuning) -----
+;; Symptom on the Pixel: a fast 2-finger drag fires many wheel events
+;; in quick succession; each that crosses a page boundary triggers a
+;; pdf-tools re-render, the image cache balloons, and the GL/UI thread
+;; stalls behind the queue. We:
+;;   1) Cap pdf-tools' image cache so memory doesn't blow up.
+;;   2) Disable page prefetching for the same reason.
+;;   3) Around-advise the page/line nav functions to throttle calls
+;;      that originate from wheel/touch events; keyboard nav passes
+;;      through unchanged (last-input-event isn't a wheel event).
+
+(defvar my/pdf-wheel-last 0
+  "Float-time of the last wheel-driven pdf-view navigation call.")
+(defconst my/pdf-wheel-interval 0.18
+  "Minimum seconds between wheel-driven pdf-view navigation calls.")
+
+(defun my/pdf-wheel-event-p (e)
+  "Return non-nil if E is a wheel/scroll/touch event."
+  (and (consp e)
+       (memq (car e) '(wheel-up wheel-down wheel-left wheel-right
+                       mouse-wheel
+                       touchscreen-update touchscreen-end touchscreen-scroll
+                       drag-mouse-1))))
+
+(defun my/pdf-wheel-throttle (orig-fn &rest args)
+  "Throttle ORIG-FN if the triggering event was a wheel/touch event.
+Keyboard-driven calls pass through unchanged."
+  (if (my/pdf-wheel-event-p last-input-event)
+      (let ((now (float-time)))
+        (when (> (- now my/pdf-wheel-last) my/pdf-wheel-interval)
+          (setq my/pdf-wheel-last now)
+          (apply orig-fn args)))
+    (apply orig-fn args)))
+
+(after! pdf-view
+  ;; Modest image cache so a runaway scroll can't balloon RSS.
+  (setq pdf-cache-image-limit 8)
+  ;; Kill prefetching: render only what's currently visible.
+  (when (boundp 'pdf-cache-prefetch-pages-front-limit)
+    (setq pdf-cache-prefetch-pages-front-limit 0))
+  (when (fboundp 'pdf-cache-prefetch-minor-mode)
+    (pdf-cache-prefetch-minor-mode -1))
+  ;; Throttle wheel-driven page nav.
+  (advice-add 'pdf-view-next-line-or-next-page :around #'my/pdf-wheel-throttle)
+  (advice-add 'pdf-view-previous-line-or-previous-page :around #'my/pdf-wheel-throttle))
