@@ -137,3 +137,55 @@ Keyboard-driven calls pass through unchanged."
   ;; Throttle wheel-driven page nav.
   (advice-add 'pdf-view-next-line-or-next-page :around #'my/pdf-wheel-throttle)
   (advice-add 'pdf-view-previous-line-or-previous-page :around #'my/pdf-wheel-throttle))
+
+
+;; ----- pdf-view touch UX (Android) --------------------------------
+;; Defaults that misbehave with a finger:
+;;   - [down-mouse-1] = pdf-view-mouse-set-mark  → "mark set" on tap
+;;   - [drag-mouse-1] = pdf-view-mouse-extend-region → text region drag
+;;   - [pinch] (via global touch-screen-display-pinch-to-zoom = t)
+;;     adjusts text-scale, which on pdf-view chains into per-event
+;;     pdf-view-enlarge / epdfinfo re-renders and crashes the app.
+;; Plan:
+;;   1) No-op down-mouse-1/mouse-1 so touches don't print/select.
+;;   2) drag-mouse-1 → page turn, throttled to one fire / 0.4s.
+;;   3) Disable global pinch handler entirely; zoom via keyboard
+;;      (+ / - / 0). We'll layer a bespoke pinch handler back later
+;;      once we know the event shape Android actually emits.
+
+(defvar my/pdf-drag-last 0
+  "Float-time of the last accepted drag-mouse-1 in pdf-view.")
+(defconst my/pdf-drag-interval 0.4
+  "Minimum seconds between accepted single-finger drags.")
+
+(defun my/pdf-noop (&rest _)
+  "No-op binding to suppress unwanted pdf-view mouse defaults."
+  (interactive))
+
+(defun my/pdf-touch-drag (event)
+  "Single-finger drag → page turn, throttled.
+Sign: drag-up (finger-up) = next page; drag-down = prev page."
+  (interactive "e")
+  (condition-case err
+      (let ((now (float-time)))
+        (when (> (- now my/pdf-drag-last) my/pdf-drag-interval)
+          (setq my/pdf-drag-last now)
+          (let* ((s (posn-x-y (event-start event)))
+                 (e (posn-x-y (event-end event)))
+                 (dy (- (cdr s) (cdr e)))
+                 (dx (- (car s) (car e))))
+            (cond
+             ((>  dy 60)  (pdf-view-next-page))
+             ((< dy -60)  (pdf-view-previous-page))
+             ((>  dx 60)  (pdf-view-next-page))
+             ((< dx -60)  (pdf-view-previous-page))))))
+    (error (message "[pdf-drag] %S" err))))
+
+(after! pdf-view
+  ;; Stop the global pinch->text-scale handler from intercepting pinches
+  ;; in pdf-view buffers (which used to crash the app).
+  (setq touch-screen-display-pinch-to-zoom nil)
+  (map! :map pdf-view-mode-map
+        [down-mouse-1] #'my/pdf-noop
+        [mouse-1]      #'my/pdf-noop
+        [drag-mouse-1] #'my/pdf-touch-drag))
