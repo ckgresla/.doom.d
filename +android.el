@@ -189,3 +189,56 @@ Sign: drag-up (finger-up) = next page; drag-down = prev page."
         [down-mouse-1] #'my/pdf-noop
         [mouse-1]      #'my/pdf-noop
         [drag-mouse-1] #'my/pdf-touch-drag))
+
+
+;; ----- harder PDF safety: pinch nuked, cache tightened, prefetch off
+;; Symptoms still seen on Pixel after the previous block:
+;;   - first pinch crashes the app (no minibuffer error -> native-side
+;;     handler or sequenced event is reaching pdf-view before the
+;;     `after!' setq took effect).
+;;   - third page-turn freezes (cache limit 8 still too big -- render
+;;     of the 4th page tips memory over).
+;; This block is overcautious by design; we'll relax once stable.
+
+;; Disable the global pinch->text-scale handler at TOP LEVEL so it's
+;; off before pdf-view ever loads.
+(setq touch-screen-display-pinch-to-zoom nil)
+
+;; Defensive: bind every flavor of pinch event we know to a no-op,
+;; both globally and in pdf-view-mode-map. If the Android port emits
+;; under any of these names, the keymap lookup hits a no-op instead
+;; of any default behavior.
+(dolist (key '([pinch] [touchscreen-pinch] [touch-screen-pinch]))
+  (define-key global-map key #'my/pdf-noop))
+
+(after! pdf-view
+  ;; Tighter image cache (4 pages ~= ~120 MB peak on this device).
+  (setq pdf-cache-image-limit 4)
+  ;; Same nukes in the pdf-view-mode-map for redundancy.
+  (dolist (key '([pinch] [touchscreen-pinch] [touch-screen-pinch]))
+    (define-key pdf-view-mode-map key #'my/pdf-noop))
+  ;; Turn off the prefetch minor-mode for every pdf buffer.
+  (add-hook 'pdf-view-mode-hook
+            (lambda ()
+              (when (fboundp 'pdf-cache-prefetch-minor-mode)
+                (pdf-cache-prefetch-minor-mode -1)))))
+
+;; ----- one-shot probe: dump Android-port-specific touch/pinch vars
+;; on the next emacs start so we can see what controls native pinch
+;; (the Termux emacs we ssh into doesn't have these symbols).
+(let ((dump "/data/data/org.gnu.emacs/files/.cache/android-emacs-probe.txt"))
+  (when (file-directory-p "/data/data/org.gnu.emacs")
+    (make-directory (file-name-directory dump) t)
+    (with-temp-file dump
+      (insert (format ";; emacs %s on %s\n" emacs-version system-type))
+      (insert (format ";; system-configuration-features = %s\n\n"
+                      system-configuration-features))
+      (mapatoms
+       (lambda (s)
+         (when (and (boundp s)
+                    (or (string-match-p "android" (symbol-name s))
+                        (string-match-p "pinch"   (symbol-name s))
+                        (string-match-p "touch-screen" (symbol-name s))))
+           (condition-case nil
+               (insert (format "%-50s = %S\n" s (symbol-value s)))
+             (error nil))))))))
