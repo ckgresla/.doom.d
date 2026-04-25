@@ -21,9 +21,9 @@
 ;; See 'C-h v doom-font' for documentation and more examples of what they
 ;; accept. For example:
 ;;
-(setq doom-font (font-spec :family "JetBrains Mono" :size 12)
-      doom-variable-pitch-font (font-spec :family "Inter" :size 12)
-      doom-big-font (font-spec :family "JetBrains Mono" :size 18))
+;; (setq doom-font (font-spec :family "JetBrains Mono" :size 12)
+;;       doom-variable-pitch-font (font-spec :family "Inter" :size 12)
+;;       doom-big-font (font-spec :family "JetBrains Mono" :size 18))
 
 ;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
 ;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
@@ -505,7 +505,7 @@
   ;; Custom compilation environment
   (defun my/compilation-setup ()
     "Setup compilation with login shell environment."
-    (setq-local shell-file-name "/bin/zsh")
+    (setq-local shell-file-name (or (executable-find "zsh") (executable-find "bash") "/bin/sh"))
     (setq-local shell-command-switch "-lc"))
 
   (add-hook 'compilation-mode-hook #'my/compilation-setup))
@@ -591,3 +591,22 @@
 ;;             (lambda ()
 ;;               (when (string= (frame-parameter nil 'title) "org-capture")
 ;;                 (delete-frame)))))
+
+;; ANDROID specific configurations, quality of the life
+(setq epg-pinentry-mode 'loopback)  ;; for gpg to work w password & emacs
+;; open all dired buffers with min info mode on android, set in dirvish
+;; as dired is overridden (dirvish used even if not explicit in init.el)
+(after! dirvish
+  (setq dirvish-hide-details t))
+(add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
+;; (after! doom-dashboard
+;;   (add-hook '+doom-dashboard-mode-hook (lambda () (text-scale-set -2))))
+
+
+
+;; Android-only configuration lives in +android.el. Loaded only when
+;; running inside the Android Emacs app, so the same .doom.d works on
+;; macOS / Linux unchanged.
+(when (or (eq system-type 'android)
+          (file-directory-p "/data/data/org.gnu.emacs"))
+  (load! "+android"))
