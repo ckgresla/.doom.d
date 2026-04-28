@@ -424,6 +424,27 @@
       (interactive)
       (vterm-send-key "<escape>"))))
 
+;; vim-friendly copy-mode: SPC m c to enter, ESC (or q) to exit.
+;; vterm-copy-mode is a read-only overlay for selecting/yanking terminal
+;; output; default toggle is C-c C-t, which is fine but not discoverable.
+(after! vterm
+  (map! :map vterm-mode-map
+        :localleader
+        "c" #'vterm-copy-mode
+        "l" #'vterm-clear
+        "L" #'vterm-clear-scrollback
+        "y" #'vterm-yank
+        "Y" #'vterm-yank-pop)
+
+  (map! :map vterm-copy-mode-map
+        ;; exits copy-mode without yanking
+        :nm "<escape>" #'vterm-copy-mode
+        :nm "q"        #'vterm-copy-mode
+        ;; RET exits copy-mode and yanks the selection (vterm default)
+        :localleader
+        "c" #'vterm-copy-mode
+        "y" #'vterm-copy-mode-done))
+
 ;; use remote shell history with vterm
 (after! vterm
   ;; Make sure vterm doesn't interfere with shell history
