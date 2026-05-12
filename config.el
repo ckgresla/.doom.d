@@ -417,12 +417,18 @@
 ;; Fix vterm shell for TRAMP - use login shell on remote
 (setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
 
-;; send literal escape to vterm, on shift+escape (ahem, claude code tui)
+;; send literal escape to vterm, on meta+escape (ahem, claude code tui)
+;; - meta in tui and gui emacs, is option on macos, clean
 (after! vterm
-  (define-key vterm-mode-map (kbd "S-<escape>")
+  (define-key vterm-mode-map (kbd "M-<escape>")
     (lambda ()
       (interactive)
       (vterm-send-key "<escape>"))))
+
+;; elegantly send newline, when press shift+enter, for claude code
+(map! :after vterm
+      :map vterm-mode-map
+      :i "<S-return>" (lambda () (interactive) (vterm-send-key (kbd "C-j"))))
 
 ;; vim-friendly copy-mode: SPC m c to enter, ESC (or q) to exit.
 ;; vterm-copy-mode is a read-only overlay for selecting/yanking terminal
