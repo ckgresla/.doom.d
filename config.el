@@ -37,7 +37,13 @@
 ;; There are two ways to load a theme. Both assume the theme is installed and
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
-(setq doom-theme 'doom-homage-white)
+;; (setq doom-theme 'doom-flatwhite)
+(setq doom-theme 'doom-challenger-deep)
+;; (setq doom-theme 'modus-operandi)
+;; (setq doom-theme 'doom-plain)
+;; (setq doom-theme 'doom-monokai-ristretto)
+;; (setq doom-theme 'doom-one-light)
+;; (setq doom-theme 'doom-one)
 (require 'kaolin-themes)
 (require 'ef-themes)
 
@@ -53,13 +59,26 @@
   - doom-homage-black
   - doom-one-light
   - doom-one
+  - doom-meltbus
   "
   (mapc #'disable-theme custom-enabled-themes)
   (pcase appearance
+    ;; ('light (load-theme 'doom-flatwhite t))
+    ;; ('dark (load-theme 'doom-tomorrow-night t))
     ('light (load-theme 'doom-homage-white t))
-    ('dark (load-theme 'doom-homage-black t))))
+    ('dark (load-theme 'doom-homage-black t))
+  ))
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
+
+;; if dark mode, enable midnight mode for opened pdfs
+(defun my/toggle-pdf-midnight-mode ()
+  "Enable pdf-view-midnight-minor-mode if system is in dark mode."
+  (when (and (boundp 'ns-system-appearance)
+             (eq ns-system-appearance 'dark))
+    (pdf-view-midnight-minor-mode 1)))
+
+(add-hook 'pdf-view-mode-hook #'my/toggle-pdf-midnight-mode)
 
 
 ;; native fullscreen behavior on macos -- emacs-plus things
@@ -135,7 +154,15 @@
         :desc "Shell Command" "s" #'shell-command
         :desc "Async Shell Command" "a" #'async-shell-command
         :desc "Grep" "g" #'grep
+        :desc "Code fix" "f" #'lsp-execute-code-action
+        :desc "Code format" "F" #'lsp-format-buffer
+        :desc "Lsp minimap" "m" #'lsp-ui-imenu
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
+
+(map! :leader
+      (:prefix "t"
+        :desc "Toggle Mode Line in Buffer" "m" #'hide-mode-line-mode))
+
 
 ;; pdf mode, inter-page navigation
 (map! :map pdf-view-mode-map
@@ -207,12 +234,14 @@
 (global-visual-line-mode 1)
 
 ;; scrolling so smooth, "i cannot believe its not butter"
-(use-package! ultra-scroll
-  :init
-  (setq scroll-conservatively 3    ; or whatever value you prefer
-        scroll-margin 0)           ; important: scroll-margin>0 not yet supported
-  :config
-  (ultra-scroll-mode 1))
+;; check that the package is installed before init -- not a terminal thing!
+(when (featurep 'ultra-scroll)
+  (use-package! ultra-scroll
+    :init
+    (setq scroll-conservatively 3
+          scroll-margin 0)
+    :config
+    (ultra-scroll-mode 1)))
 
 
 ;; bind option+del and cmd+del (not backspace but del) to delete the next word/line, similar to default on MacOS
@@ -387,8 +416,43 @@
 
 
 
+;; vterm
 ;; Fix vterm shell for TRAMP - use login shell on remote
 (setq vterm-tramp-shells '(("sshx" login-shell "/bin/zsh")))
+
+;; send literal escape to vterm, on meta+escape (ahem, claude code tui)
+;; - meta in tui and gui emacs, is option on macos, clean
+(after! vterm
+  (define-key vterm-mode-map (kbd "M-<escape>")
+    (lambda ()
+      (interactive)
+      (vterm-send-key "<escape>"))))
+
+;; elegantly send newline, when press shift+enter, for claude code
+(map! :after vterm
+      :map vterm-mode-map
+      :i "<S-return>" (lambda () (interactive) (vterm-send-key (kbd "C-j"))))
+
+;; vim-friendly copy-mode: SPC m c to enter, ESC (or q) to exit.
+;; vterm-copy-mode is a read-only overlay for selecting/yanking terminal
+;; output; default toggle is C-c C-t, which is fine but not discoverable.
+(after! vterm
+  (map! :map vterm-mode-map
+        :localleader
+        "c" #'vterm-copy-mode
+        "l" #'vterm-clear
+        "L" #'vterm-clear-scrollback
+        "y" #'vterm-yank
+        "Y" #'vterm-yank-pop)
+
+  (map! :map vterm-copy-mode-map
+        ;; exits copy-mode without yanking
+        :nm "<escape>" #'vterm-copy-mode
+        :nm "q"        #'vterm-copy-mode
+        ;; RET exits copy-mode and yanks the selection (vterm default)
+        :localleader
+        "c" #'vterm-copy-mode
+        "y" #'vterm-copy-mode-done))
 
 ;; use remote shell history with vterm
 (after! vterm
@@ -420,9 +484,47 @@
   (setq lsp-enable-file-watchers t)
   (setq lsp-file-watch-threshold 10000))
 
+;; match theme colors in `lsp-ui-imenu'
+(after! lsp-ui
+  ;; Set colors from Doom theme that will be evaluated when lsp-ui-imenu is called
+  (setq lsp-ui-imenu-colors
+        (list (doom-color 'blue)
+              (doom-color 'magenta)
+              (doom-color 'violet)
+              (doom-color 'cyan)
+              (doom-color 'yellow)
+              (doom-color 'orange)
+              (doom-color 'green)
+              (doom-color 'teal)))
+
+  ;; Refresh colors when theme changes
+  (defun my/refresh-lsp-ui-imenu-colors ()
+    "Update lsp-ui-imenu colors from current Doom theme."
+    (setq lsp-ui-imenu-colors
+          (list (doom-color 'blue)
+                (doom-color 'magenta)
+                (doom-color 'violet)
+                (doom-color 'cyan)
+                (doom-color 'yellow)
+                (doom-color 'orange)
+                (doom-color 'green)
+                (doom-color 'teal))))
+
+  (add-hook 'doom-load-theme-hook #'my/refresh-lsp-ui-imenu-colors))
+
+;; remove all watched folders, a nice cleanup method
+(defun my/lsp-clean-all-workspace-folders ()
+  "Remove all LSP workspace folders."
+  (interactive)
+  (let ((folders (lsp-session-folders (lsp-session))))
+    (dolist (folder folders)
+      (lsp-workspace-folders-remove folder))))
+
 ;; Python
 (require 'flycheck-mypy)
 (add-hook 'python-mode-hook 'flycheck-mode)
+;; "based"
+(setq lsp-pyright-langserver-command "basedpyright")
 
 ;; Rust
 (after! lsp-rust
@@ -437,6 +539,8 @@
 (add-to-list 'exec-path "/Users/ckg/.cargo/bin")
 (setenv "PATH" (concat "/Users/ckg/.cargo/bin:" (getenv "PATH")))
 
+;; justfiles
+(use-package! just-mode)
 
 ;; CUDA config
 ;; Configure cuda-mode for proper file associations
@@ -534,6 +638,49 @@
   ;; natural language datetime refs, for scheduling
   (setq org-read-date-prefer-future 'time)
   )
+
+;; Backtick inline code support for org-mode
+(after! org
+  ;; Create face that properly scales with text-scale-adjust
+  (defface org-code-inline
+    '((t (:inherit (org-quote) :family nil :height 1.0 :slant normal :weight normal)))
+    "Face for inline code delimited by backticks."
+    :group 'org-faces)
+
+  ;; Alternative: inherit from default instead of fixed-pitch
+  ;; This ensures the face scales properly
+  (set-face-attribute 'org-code-inline nil
+                      :inherit '(org-quote)
+                      :family (face-attribute 'fixed-pitch :family)
+                      :height 1.0  ; Relative height (1.0 = same as default)
+                      :slant 'normal
+                      :weight 'normal)
+
+  ;; Add font-lock keyword for backticks
+  (defun my/org-add-backtick-emphasis ()
+    "Add backtick emphasis to org-mode."
+    (font-lock-add-keywords nil
+      '(("`\\([^`\n]+\\)`"
+         (0 (let* ((hide-markers (and (boundp 'org-hide-emphasis-markers)
+                                     org-hide-emphasis-markers))
+                   (match-data (match-data)))
+              (when hide-markers
+                (add-text-properties (match-beginning 0) (1+ (match-beginning 0))
+                                    '(invisible org-link))
+                (add-text-properties (1- (match-end 0)) (match-end 0)
+                                    '(invisible org-link)))
+              (add-text-properties (match-beginning 1) (match-end 1)
+                                  '(face org-code-inline))
+              (set-match-data match-data)
+              nil))))
+      'append))
+
+  ;; Add to org-mode-hook
+  (add-hook 'org-mode-hook #'my/org-add-backtick-emphasis))
+
+
+
+
 
 
 ;; cleaner view for org-agenda, no full day laid out
