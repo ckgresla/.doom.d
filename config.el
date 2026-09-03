@@ -21,9 +21,18 @@
 ;; See 'C-h v doom-font' for documentation and more examples of what they
 ;; accept. For example:
 ;;
+;; typical desktop font size
 (setq doom-font (font-spec :family "JetBrains Mono" :size 12)
       doom-variable-pitch-font (font-spec :family "Inter" :size 12)
       doom-big-font (font-spec :family "JetBrains Mono" :size 18))
+;; fonts on android
+(when (eq system-type 'android)
+  ;; Android interprets font-spec :size at roughly one third of the desktop
+  ;; face height on this high-density display.  These values restore the
+  ;; readable scale used before selecting explicit font families.
+  (setq doom-font (font-spec :family "JetBrains Mono NL" :size 37)
+        doom-variable-pitch-font (font-spec :family "Inter Variable" :size 37)
+        doom-big-font (font-spec :family "JetBrains Mono NL" :size 55)))
 
 ;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
 ;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
@@ -403,7 +412,6 @@
 ;;                "find . -type f -print0"))))
 
 ;; (setq projectile-track-known-projects-automatically nil)
-(setq projectile-verbose t)  ;; DEBUG
 
 
 ;; enable custom.el file
@@ -609,7 +617,7 @@
   ;; Custom compilation environment
   (defun my/compilation-setup ()
     "Setup compilation with login shell environment."
-    (setq-local shell-file-name "/bin/zsh")
+    (setq-local shell-file-name (or (executable-find "zsh") (executable-find "bash") "/bin/sh"))
     (setq-local shell-command-switch "-lc"))
 
   (add-hook 'compilation-mode-hook #'my/compilation-setup))
@@ -738,3 +746,18 @@
 ;;             (lambda ()
 ;;               (when (string= (frame-parameter nil 'title) "org-capture")
 ;;                 (delete-frame)))))
+
+;; ANDROID specific configurations, quality of the life
+(setq epg-pinentry-mode 'loopback)  ;; for gpg to work w password & emacs
+(add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
+;; (after! doom-dashboard
+;;   (add-hook '+doom-dashboard-mode-hook (lambda () (text-scale-set -2))))
+
+
+
+;; Android-only configuration lives in +android.el. Loaded only when
+;; running inside the Android Emacs app, so the same .doom.d works on
+;; macOS / Linux unchanged.
+(when (or (eq system-type 'android)
+          (file-directory-p "/data/data/org.gnu.emacs"))
+  (load! "+android"))
