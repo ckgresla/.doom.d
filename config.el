@@ -21,6 +21,11 @@
 ;; See 'C-h v doom-font' for documentation and more examples of what they
 ;; accept. For example:
 ;;
+;; typical desktop font size
+(setq doom-font (font-spec :family "JetBrains Mono" :size 12)
+      doom-variable-pitch-font (font-spec :family "Inter" :size 12)
+      doom-big-font (font-spec :family "JetBrains Mono" :size 18))
+;; fonts on android
 (when (eq system-type 'android)
   ;; Android interprets font-spec :size at roughly one third of the desktop
   ;; face height on this high-density display.  These values restore the
