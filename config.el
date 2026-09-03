@@ -755,6 +755,9 @@
 
 
 
+;; Shared writing views: SPC t x (monospace), SPC t n (variable font).
+(load! "+writing")
+
 ;; Android-only configuration lives in +android.el. Loaded only when
 ;; running inside the Android Emacs app, so the same .doom.d works on
 ;; macOS / Linux unchanged.
