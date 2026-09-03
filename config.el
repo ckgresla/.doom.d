@@ -21,9 +21,13 @@
 ;; See 'C-h v doom-font' for documentation and more examples of what they
 ;; accept. For example:
 ;;
-;; (setq doom-font (font-spec :family "JetBrains Mono" :size 12)
-;;       doom-variable-pitch-font (font-spec :family "Inter" :size 12)
-;;       doom-big-font (font-spec :family "JetBrains Mono" :size 18))
+(when (eq system-type 'android)
+  ;; Android interprets font-spec :size at roughly one third of the desktop
+  ;; face height on this high-density display.  These values restore the
+  ;; readable scale used before selecting explicit font families.
+  (setq doom-font (font-spec :family "JetBrains Mono NL" :size 37)
+        doom-variable-pitch-font (font-spec :family "Inter Variable" :size 37)
+        doom-big-font (font-spec :family "JetBrains Mono NL" :size 55)))
 
 ;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
 ;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
@@ -33,7 +37,7 @@
 ;; There are two ways to load a theme. Both assume the theme is installed and
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
-(setq doom-theme 'doom-flatwhite)
+(setq doom-theme 'doom-homage-white)
 (require 'kaolin-themes)
 (require 'ef-themes)
 
@@ -52,8 +56,8 @@
   "
   (mapc #'disable-theme custom-enabled-themes)
   (pcase appearance
-    ('light (load-theme 'doom-flatwhite t))
-    ('dark (load-theme 'doom-meltbus t))))
+    ('light (load-theme 'doom-homage-white t))
+    ('dark (load-theme 'doom-homage-black t))))
 
 (add-hook 'ns-system-appearance-change-functions #'my/apply-theme)
 
@@ -374,7 +378,6 @@
 ;;                "find . -type f -print0"))))
 
 ;; (setq projectile-track-known-projects-automatically nil)
-(setq projectile-verbose t)  ;; DEBUG
 
 
 ;; enable custom.el file
@@ -594,10 +597,6 @@
 
 ;; ANDROID specific configurations, quality of the life
 (setq epg-pinentry-mode 'loopback)  ;; for gpg to work w password & emacs
-;; open all dired buffers with min info mode on android, set in dirvish
-;; as dired is overridden (dirvish used even if not explicit in init.el)
-(after! dirvish
-  (setq dirvish-hide-details t))
 (add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
 ;; (after! doom-dashboard
 ;;   (add-hook '+doom-dashboard-mode-hook (lambda () (text-scale-set -2))))
