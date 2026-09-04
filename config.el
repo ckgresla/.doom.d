@@ -747,6 +747,11 @@
 ;;               (when (string= (frame-parameter nil 'title) "org-capture")
 ;;                 (delete-frame)))))
 
+;; enable automatic line wrap in org, at 80 chars
+(add-hook! org-mode
+  (setq-local fill-column 80)
+  (auto-fill-mode 1))
+
 ;; ANDROID specific configurations, quality of the life
 (setq epg-pinentry-mode 'loopback)  ;; for gpg to work w password & emacs
 (add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
