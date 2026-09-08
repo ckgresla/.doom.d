@@ -34,6 +34,7 @@
         doom-variable-pitch-font (font-spec :family "Inter Variable" :size 37)
         doom-big-font (font-spec :family "JetBrains Mono NL" :size 55)))
 
+
 ;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
 ;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
 ;; refresh your font settings. If Emacs still can't find your font, it likely
@@ -438,6 +439,25 @@
       :map vterm-mode-map
       :i "<S-return>" (lambda () (interactive) (vterm-send-key (kbd "C-j"))))
 
+;; macOS-native nav/edit keys → readline equivalents inside the pty.
+;; Works for any TUI that speaks readline (bash, zsh, python REPL,
+;; Claude Code, aichat, sqlite3, psql, etc.).
+(after! vterm
+  (map! :map vterm-mode-map
+        ;; Cmd+←/→  → start/end of line (C-a / C-e)
+        "s-<left>"      (cmd! (vterm-send-key "a" nil nil t))
+        "s-<right>"     (cmd! (vterm-send-key "e" nil nil t))
+        ;; Opt+←/→  → previous/next word (M-b / M-f)
+        "M-<left>"      (cmd! (vterm-send-key "b" nil t nil))
+        "M-<right>"     (cmd! (vterm-send-key "f" nil t nil))
+        ;; Opt+Backspace → delete previous word (M-DEL)
+        "M-<backspace>" (cmd! (vterm-send-key "<backspace>" nil t nil))
+        ;; Cmd+Backspace → kill to start of line (C-u)
+        "s-<backspace>" (cmd! (vterm-send-key "u" nil nil t))
+        ;; Cmd+↑/↓ → top/bottom of input history (M-< / M->)
+        "s-<up>"        (cmd! (vterm-send-key "<" nil t nil))
+        "s-<down>"      (cmd! (vterm-send-key ">" nil t nil))))
+
 ;; vim-friendly copy-mode: SPC m c to enter, ESC (or q) to exit.
 ;; vterm-copy-mode is a read-only overlay for selecting/yanking terminal
 ;; output; default toggle is C-c C-t, which is fine but not discoverable.
@@ -681,10 +701,16 @@
       'append))
 
   ;; Add to org-mode-hook
-  (add-hook 'org-mode-hook #'my/org-add-backtick-emphasis))
+  (add-hook 'org-mode-hook #'my/org-add-backtick-emphasis)
+
+  ;; load in contents from life where available (org et al)
+  (load (expand-file-name ".org-config.el" "~/life") :noerror :nomessage
+  ))
 
 
 
+
+(setq epg-pinentry-mode 'loopback)
 
 
 
