@@ -704,13 +704,42 @@
   (add-hook 'org-mode-hook #'my/org-add-backtick-emphasis)
 
   ;; load in contents from life where available (org et al)
-  (load (expand-file-name ".org-config.el" "~/life") :noerror :nomessage
+  (load (expand-file-name "org-config.el" "~/life") :noerror :nomessage
   ))
 
 
 
 
+;;; --- gpg / encrypted org ---------------------------------------------------
+;; personal.org.gpg is symmetrically encrypted (no keypair), so prompt in the
+;; minibuffer instead of an external pinentry.
 (setq epg-pinentry-mode 'loopback)
+
+;; Ask once on open; reuse that passphrase when saving, so writing the file
+;; doesn't re-prompt or demand confirmation.
+(setq epa-file-cache-passphrase-for-symmetric-encryption t)
+
+;; ...but only briefly.  Forget it 5 minutes after the last decrypt/encrypt.
+(defvar ckg/epa-passphrase-ttl 300
+  "Seconds to keep a cached symmetric passphrase after the last GPG access.")
+
+(defvar ckg/epa-passphrase-timer nil)
+
+(defun ckg/epa-forget-passphrases ()
+  "Drop every cached symmetric passphrase."
+  (interactive)
+  (setq epa-file-passphrase-alist nil)
+  (message "GPG passphrase cache cleared"))
+
+(defun ckg/epa-arm-passphrase-timer (&rest _)
+  "Restart the passphrase expiry countdown."
+  (when (timerp ckg/epa-passphrase-timer)
+    (cancel-timer ckg/epa-passphrase-timer))
+  (setq ckg/epa-passphrase-timer
+        (run-with-timer ckg/epa-passphrase-ttl nil #'ckg/epa-forget-passphrases)))
+
+(advice-add 'epa-file-insert-file-contents :after #'ckg/epa-arm-passphrase-timer)
+(advice-add 'epa-file-write-region :after #'ckg/epa-arm-passphrase-timer)
 
 
 
@@ -778,11 +807,6 @@
   (setq-local fill-column 80)
   (auto-fill-mode 1))
 
-;; ANDROID specific configurations, quality of the life
-(setq epg-pinentry-mode 'loopback)  ;; for gpg to work w password & emacs
-(add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
-;; (after! doom-dashboard
-;;   (add-hook '+doom-dashboard-mode-hook (lambda () (text-scale-set -2))))
 
 
 

@@ -14,6 +14,12 @@
   "Disable current-line highlighting in writing views."
   :type 'boolean :group 'my/writing)
 
+(defcustom my/writing-width 80
+  "Content columns a writing view aims to render.
+This counts characters of buffer text, so a file hard-wrapped at this
+column never wraps again on screen."
+  :type 'integer :group 'my/writing)
+
 (defvar-local my/writing-style nil)
 (defvar-local my/writing--saved nil)
 (defvar-local my/writing--font-cookie nil)
@@ -27,6 +33,14 @@
   '(visual-line-mode visual-fill-column-mode vi-tilde-fringe-mode
     variable-pitch-mode mixed-pitch-mode hl-line-mode))
 
+(defun my/writing--indent-columns ()
+  "Columns `org-indent-mode' takes from body text before the window edge.
+Its virtual `line-prefix' is not buffer text, so the margin math has to
+budget for it separately or lines wrap early."
+  (if (bound-and-true-p org-indent-mode)
+      (or (bound-and-true-p org-indent-indentation-per-level) 2)
+    0))
+
 (defun my/writing--set-margins (original window)
   "Center writing views using rendered font pixels, not unscaled columns."
   (with-current-buffer (window-buffer window)
@@ -36,8 +50,11 @@
              (old (window-margins window))
              (available (+ (window-body-width window t)
                            (* cell (+ (or (car old) 0) (or (cdr old) 0)))))
-             (target (* 80 (window-font-width window)))
-             (margin (max 0 (ceiling (/ (- available target) (* 2.0 cell))))))
+             (target (* (+ my/writing-width (my/writing--indent-columns))
+                        (window-font-width window)))
+             ;; Round down: a margin rounded up leaves the text area a
+             ;; column short of the target, which wraps full-width lines.
+             (margin (max 0 (floor (/ (- available target) (* 2.0 cell))))))
         (set-window-margins window margin margin)))))
 
 (defun my/writing--resize (&rest _)
@@ -127,7 +144,7 @@
                            :family nil t)))
     (setq-local display-line-numbers nil
                 indicate-empty-lines nil
-                visual-fill-column-width 80
+                visual-fill-column-width my/writing-width
                 visual-fill-column-center-text t
                 visual-fill-column-extra-text-width '(0 . 0))
     (when my/writing-hide-modeline

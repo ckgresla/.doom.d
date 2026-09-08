@@ -529,3 +529,6 @@
 ;; Keep the line-number menu entry out of the compact Android menu.
 (when (fboundp 'menu-bar--display-line-numbers-mode-none)
   (menu-bar--display-line-numbers-mode-none))
+
+;; Dashboard is oversized on the phone's high-density display.
+(add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
