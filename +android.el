@@ -3,6 +3,9 @@
 ;; Loaded from config.el only when running on the Android Emacs port, so the
 ;; same .doom.d works unchanged on macOS and Linux desktops.
 
+;; Additional glyph coverage, without replacing Inter or JetBrains Mono NL.
+(load! "+android-fonts")
+
 ;; ----- Termux <-> Android Emacs bridge -----------------------------
 ;; com.termux and org.gnu.emacs share a UID on this device, so Emacs can use
 ;; Termux binaries directly.  Do not export Termux's library directory:

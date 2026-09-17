@@ -1,0 +1,42 @@
+;;; android-fonts-test.el --- Android-only font regressions -*- lexical-binding: t; -*-
+;; Run: emacs --batch -Q -l tests/android-fonts-test.el
+(require 'cl-lib)
+(require 'ert)
+(load (expand-file-name "../+android-fonts.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+
+(ert-deftest android-cjk-leaves-desktop-alone ()
+  (let ((system-type 'darwin) (my/android-cjk-font-configured nil))
+    (cl-letf (((symbol-function 'find-font)
+               (lambda (&rest _) (ert-fail "Desktop font lookup"))))
+      (my/android-setup-cjk-font)
+      (should-not my/android-cjk-font-configured))))
+
+(ert-deftest android-cjk-missing-font-is-safe-and-retryable ()
+  (let ((system-type 'android) (my/android-cjk-font-configured nil))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'find-font) (lambda (&rest _) nil))
+              ((symbol-function 'set-fontset-font)
+               (lambda (&rest _) (ert-fail "Missing font registered"))))
+      (my/android-setup-cjk-font)
+      (should-not my/android-cjk-font-configured))))
+
+(ert-deftest android-cjk-registers-only-cjk-once ()
+  (let ((system-type 'android) (my/android-cjk-font-configured nil) calls)
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'find-font) (lambda (&rest _) t))
+              ((symbol-function 'set-fontset-font)
+               (lambda (&rest args) (push args calls))))
+      (my/android-setup-cjk-font)
+      (my/android-setup-cjk-font)
+      (run-hooks 'after-setting-font-hook)
+      (should my/android-cjk-font-configured)
+      (should (equal (mapcar #'cadr (reverse calls))
+                     '(han kana hangul cjk-misc bopomofo)))
+      (dolist (call calls)
+        (should (equal (format "%s" (font-get (nth 2 call) :family))
+                       "Noto Sans CJK JP"))
+        (should (eq (nth 4 call) 'prepend))))))
+
+(ert-run-tests-batch-and-exit "^android-cjk-")
