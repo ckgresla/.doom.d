@@ -33,13 +33,34 @@ column never wraps again on screen."
   '(visual-line-mode visual-fill-column-mode vi-tilde-fringe-mode
     variable-pitch-mode mixed-pitch-mode hl-line-mode))
 
-(defun my/writing--indent-columns ()
-  "Columns `org-indent-mode' takes from body text before the window edge.
-Its virtual `line-prefix' is not buffer text, so the margin math has to
-budget for it separately or lines wrap early."
-  (if (bound-and-true-p org-indent-mode)
-      (or (bound-and-true-p org-indent-indentation-per-level) 2)
-    0))
+(defun my/writing--indent-columns (window)
+  "Largest visible Org `line-prefix' in WINDOW, in character columns.
+These virtual columns are not buffer text, so reserve them in addition
+to `my/writing-width'.  Do not count `wrap-prefix': its list indentation
+is already included in the file's hard-wrapped continuation lines."
+  (let ((width 0))
+    (when (bound-and-true-p org-indent-mode)
+      (let ((pos (max (point-min) (window-start window)))
+            (end (min (point-max) (or (window-end window t) (point-max)))))
+        (while (< pos end)
+          (let ((prefix (get-char-property pos 'line-prefix window)))
+            (when (and (not (invisible-p pos)) (stringp prefix))
+              (setq width (max width (string-width prefix)))))
+          (setq pos (next-char-property-change pos end)))))
+    width))
+
+(defun my/writing--refresh-indent (&rest _)
+  "Refresh writing margins when visible Org indentation changes."
+  (when my/writing-style
+    (dolist (window (get-buffer-window-list (current-buffer) nil t))
+      (unless (equal (my/writing--indent-columns window)
+                     (window-parameter window 'my/writing-indent-columns))
+        (visual-fill-column--adjust-window window)))))
+
+(defun my/writing--watch-indent ()
+  "Track edits, folding and scrolling while a writing view is active."
+  (add-hook 'post-command-hook #'my/writing--refresh-indent nil t)
+  (add-hook 'window-scroll-functions #'my/writing--refresh-indent nil t))
 
 (defun my/writing--set-margins (original window)
   "Center writing views using rendered font pixels, not unscaled columns."
@@ -50,11 +71,13 @@ budget for it separately or lines wrap early."
              (old (window-margins window))
              (available (+ (window-body-width window t)
                            (* cell (+ (or (car old) 0) (or (cdr old) 0)))))
-             (target (* (+ my/writing-width (my/writing--indent-columns))
+             (indent (my/writing--indent-columns window))
+             (target (* (+ my/writing-width indent)
                         (window-font-width window)))
              ;; Round down: a margin rounded up leaves the text area a
              ;; column short of the target, which wraps full-width lines.
              (margin (max 0 (floor (/ (- available target) (* 2.0 cell))))))
+        (set-window-parameter window 'my/writing-indent-columns indent)
         (set-window-margins window margin margin)))))
 
 (defun my/writing--resize (&rest _)
@@ -91,6 +114,10 @@ budget for it separately or lines wrap early."
 (defun my/writing-restore ()
   "Restore the buffer's presentation from before its writing view."
   (when my/writing--saved
+    (remove-hook 'post-command-hook #'my/writing--refresh-indent t)
+    (remove-hook 'window-scroll-functions #'my/writing--refresh-indent t)
+    (dolist (window (get-buffer-window-list (current-buffer) nil t))
+      (set-window-parameter window 'my/writing-indent-columns nil))
     (when my/writing--font-cookie
       (face-remap-remove-relative my/writing--font-cookie)
       (setq my/writing--font-cookie nil))
@@ -155,6 +182,7 @@ budget for it separately or lines wrap early."
       (when (fboundp 'global-hl-line-unhighlight)
         (global-hl-line-unhighlight)))
     (setq my/writing-style style)
+    (my/writing--watch-indent)
     (visual-line-mode 1)
     (visual-fill-column-mode 1)
     (visual-fill-column-adjust)
