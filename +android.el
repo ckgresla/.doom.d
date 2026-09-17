@@ -110,6 +110,8 @@
 ;; Keep Doom's full PDF workflow (midnight mode, search, selection, continuous
 ;; scrolling, and its keymaps), while bounding the Android image allocations
 ;; that previously accumulated on every page render.
+(load! "+android-pdf")
+
 (setq pdf-info-epdfinfo-program (expand-file-name "~/.local/bin/epdfinfo")
       pdf-tools-handle-upgrades nil
       image-cache-eviction-delay 1)
@@ -118,16 +120,19 @@
 
 (defun my/pdf-release-old-native-image (orig-fn image &rest args)
   "Evict the previous Android image before displaying PDF IMAGE."
-  (let* ((candidate (car args))
-         (window (if (windowp candidate) candidate (selected-window)))
-         (frame (and (window-live-p window) (window-frame window))))
-    (when frame
-      (clear-image-cache frame))
-    (prog1 (apply orig-fn image args)
-      (when (timerp my/pdf-native-image-gc-timer)
-        (cancel-timer my/pdf-native-image-gc-timer))
-      (setq my/pdf-native-image-gc-timer
-            (run-with-idle-timer 0.35 nil #'garbage-collect)))))
+  (if (bound-and-true-p pdf-view-roll-minor-mode)
+      ;; The roll adapter releases only detached pages, retaining its neighbors.
+      (apply orig-fn image args)
+    (let* ((candidate (if (numberp (car args)) (cadr args) (car args)))
+           (window (if (windowp candidate) candidate (selected-window)))
+           (frame (and (window-live-p window) (window-frame window))))
+      (when frame
+        (clear-image-cache frame))
+      (prog1 (apply orig-fn image args)
+        (when (timerp my/pdf-native-image-gc-timer)
+          (cancel-timer my/pdf-native-image-gc-timer))
+        (setq my/pdf-native-image-gc-timer
+              (run-with-idle-timer 0.35 nil #'garbage-collect))))))
 
 (defvar my/pdf-wheel-last 0)
 (defconst my/pdf-wheel-interval 0.18)
@@ -172,13 +177,7 @@
   "Navigate pdf-view in response to touchscreen scroll EVENT."
   (interactive "e")
   (my/pdf-touch-cancel-stale-timer)
-  (let ((window (nth 1 event))
-        (dy (nth 3 event)))
-    (when (and (window-live-p window) (numberp dy) (not (zerop dy)))
-      (with-selected-window window
-        (if (> dy 0)
-            (pdf-view-next-line-or-next-page 1)
-          (pdf-view-previous-line-or-previous-page 1))))))
+  (my/android-pdf-scroll-pixels (nth 3 event) (nth 1 event) (nth 2 event)))
 
 ;; pdf-tools' desktop mouse bindings make Emacs's standard touch translator
 ;; synchronous: it reads ahead until release, and a release occasionally goes
@@ -256,9 +255,12 @@
                     (xy (posn-x-y posn)))
           (let ((dx (- (car my/pdf-raw-touch-last-xy) (car xy)))
                 (dy (- (cdr my/pdf-raw-touch-last-xy) (cdr xy))))
-            (setq my/pdf-raw-touch-last-xy xy)
-            (when (or (> (abs dy) 10) (> (abs dx) (frame-char-width)))
-              (setq my/pdf-raw-touch-moved t)
+            ;; Accumulate small motions until the drag threshold, then follow
+            ;; every pixel.  Resetting the origin on each event loses slow drags.
+            (when (or my/pdf-raw-touch-moved
+                      (> (abs dy) 10) (> (abs dx) (frame-char-width)))
+              (setq my/pdf-raw-touch-last-xy xy
+                    my/pdf-raw-touch-moved t)
               (my/pdf-touch-scroll
                (list 'touchscreen-scroll (posn-window posn) dx dy)))))))))
 
@@ -271,14 +273,24 @@
          (primary (eq id my/pdf-raw-touch-primary)))
     (setq my/pdf-raw-touch-points
           (assq-delete-all id my/pdf-raw-touch-points))
+    (when (and my/pdf-raw-touch-pinch-distance
+               (not (cdr my/pdf-raw-touch-points)))
+      ;; Commit a completed pinch before a new gesture establishes its origin.
+      (when (timerp my/pdf-pinch-timer)
+        (cancel-timer my/pdf-pinch-timer))
+      (my/pdf-apply-pinch (current-buffer))
+      (setq my/pdf-pinch-base-scale nil
+            my/pdf-pinch-ratio 1.0
+            my/pdf-raw-touch-pinch-distance nil))
     (when (and primary (not canceled) (not my/pdf-raw-touch-moved))
       (my/pdf-touch-tap))
     (if my/pdf-raw-touch-points
-        (when primary
-          (setq my/pdf-raw-touch-primary (caar my/pdf-raw-touch-points)
-                my/pdf-raw-touch-last-xy
-                (posn-x-y (cdar my/pdf-raw-touch-points))
-                my/pdf-raw-touch-moved t))
+        ;; Either finger may lift first.  Start any remaining drag at its
+        ;; current position, not at a coordinate from before the pinch.
+        (setq my/pdf-raw-touch-primary (caar my/pdf-raw-touch-points)
+              my/pdf-raw-touch-last-xy
+              (posn-x-y (cdar my/pdf-raw-touch-points))
+              my/pdf-raw-touch-moved t)
       (my/pdf-raw-touch-reset))))
 
 (defun my/android-touch-event-window (event)
@@ -403,7 +415,9 @@
 ;; state only; one bounded render happens after the gesture becomes idle.
 (defconst my/pdf-pinch-idle-delay 0.22)
 (defconst my/pdf-pinch-min-scale 0.6)
-(defconst my/pdf-pinch-max-scale 2.5)
+;; These are PDF-point scales, not multiples of the current screen size.
+;; A fit-width page on this HiDPI phone already approaches 2.5.
+(defconst my/pdf-pinch-max-scale 4.0)
 (defvar-local my/pdf-pinch-base-scale nil)
 (defvar-local my/pdf-pinch-ratio 1.0)
 (defvar-local my/pdf-pinch-timer nil)
@@ -420,16 +434,25 @@
   "Apply the last debounced pinch to pdf-view BUFFER."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
-      (when (derived-mode-p 'pdf-view-mode)
-        (let ((target (max my/pdf-pinch-min-scale
-                           (min my/pdf-pinch-max-scale
-                                (* my/pdf-pinch-base-scale
-                                   my/pdf-pinch-ratio)))))
-          (setq pdf-view-display-size target
-                my/pdf-pinch-base-scale nil
-                my/pdf-pinch-ratio 1.0
-                my/pdf-pinch-timer nil)
-          (pdf-view-redisplay t))))))
+      (setq my/pdf-pinch-timer nil)
+      (when-let* (((derived-mode-p 'pdf-view-mode))
+                   (my/pdf-pinch-base-scale)
+                   (window (get-buffer-window buffer t)))
+        (with-selected-window window
+          (let ((target (my/android-pdf-limit-scale
+                         (max my/pdf-pinch-min-scale
+                              (min my/pdf-pinch-max-scale
+                                   (* my/pdf-pinch-base-scale
+                                      my/pdf-pinch-ratio)))
+                         (pdf-cache-pagesize (pdf-view-current-page)))))
+            ;; Ratios in raw events are cumulative from the original contact.
+            ;; Keep that baseline while both fingers remain down, even if idle.
+            (unless (cdr my/pdf-raw-touch-points)
+              (setq my/pdf-pinch-base-scale nil
+                    my/pdf-pinch-ratio 1.0))
+            (unless (equal pdf-view-display-size target)
+              (setq pdf-view-display-size target)
+              (pdf-view-redisplay window))))))))
 
 (defun my/pdf-touch-pinch (event)
   "Debounce touchscreen EVENT into one bounded pdf-view resize."
