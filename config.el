@@ -160,9 +160,6 @@
         :desc "Shell Command" "s" #'shell-command
         :desc "Async Shell Command" "a" #'async-shell-command
         :desc "Grep" "g" #'grep
-        :desc "Code fix" "f" #'lsp-execute-code-action
-        :desc "Code format" "F" #'lsp-format-buffer
-        :desc "Lsp minimap" "m" #'lsp-ui-imenu
         :desc "Kill Current Compilation" "C-c" #'kill-compilation))
 
 (map! :leader
@@ -500,60 +497,19 @@
   ;; (setq magit-refresh-status-buffer nil)
 )
 
-;; LSP Configurations
-;; configure LSP to show symbol info on mouse hover
-(setq lsp-ui-doc-enable t)
-(setq lsp-ui-doc-show-with-mouse t)
-;; watch files + increase default threshold
-(after! lsp-mode
-  (setq lsp-enable-file-watchers t)
-  (setq lsp-file-watch-threshold 10000))
+;; Standalone linting is managed by Doom's :checkers syntax module.
+;; Register the existing Python mypy checker without eagerly loading Flycheck
+;; or bypassing Android's no-background-diagnostics setting.
+(after! flycheck
+  (require 'flycheck-mypy))
 
-;; match theme colors in `lsp-ui-imenu'
-(after! lsp-ui
-  ;; Set colors from Doom theme that will be evaluated when lsp-ui-imenu is called
-  (setq lsp-ui-imenu-colors
-        (list (doom-color 'blue)
-              (doom-color 'magenta)
-              (doom-color 'violet)
-              (doom-color 'cyan)
-              (doom-color 'yellow)
-              (doom-color 'orange)
-              (doom-color 'green)
-              (doom-color 'teal)))
-
-  ;; Refresh colors when theme changes
-  (defun my/refresh-lsp-ui-imenu-colors ()
-    "Update lsp-ui-imenu colors from current Doom theme."
-    (setq lsp-ui-imenu-colors
-          (list (doom-color 'blue)
-                (doom-color 'magenta)
-                (doom-color 'violet)
-                (doom-color 'cyan)
-                (doom-color 'yellow)
-                (doom-color 'orange)
-                (doom-color 'green)
-                (doom-color 'teal))))
-
-  (add-hook 'doom-load-theme-hook #'my/refresh-lsp-ui-imenu-colors))
-
-;; remove all watched folders, a nice cleanup method
-(defun my/lsp-clean-all-workspace-folders ()
-  "Remove all LSP workspace folders."
-  (interactive)
-  (let ((folders (lsp-session-folders (lsp-session))))
-    (dolist (folder folders)
-      (lsp-workspace-folders-remove folder))))
-
-;; Python
-(require 'flycheck-mypy)
-(add-hook 'python-mode-hook 'flycheck-mode)
-;; "based"
-(setq lsp-pyright-langserver-command "basedpyright")
-
-;; Rust
-(after! lsp-rust
-  (setq lsp-rust-analyzer-server-command '("/Users/ckg/.cargo/bin/rust-analyzer")))
+;; This Doom version otherwise starts Tide even without JavaScript's +lsp flag.
+;; Remove the startup hooks as well as disabling the package in packages.el.
+(dolist (hook '(typescript-mode-local-vars-hook
+                typescript-tsx-mode-local-vars-hook
+                web-mode-local-vars-hook
+                rjsx-mode-local-vars-hook))
+  (remove-hook hook #'+javascript-init-lsp-or-tide-maybe-h))
 
 (after! exec-path-from-shell
   (when (memq window-system '(mac ns x))

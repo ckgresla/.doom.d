@@ -61,16 +61,9 @@
 (package! kaolin-themes)  ;; Beautiful pastel-rich themes
 (package! ef-themes)      ;; Elegant pastel themes with good contrast
 
-;; Add LSP-Bridge- https://github.com/manateelazycat/lsp-bridge
-(package! lsp-bridge
-  :recipe (:host github
-           :repo "manateelazycat/lsp-bridge"
-           :files ("*.el" "*.py" "acm" "core" "langserver" "multiserver" "resources")))
-
-;; LSP-Bridge dependencies
-(package! markdown-mode)
-(package! yasnippet)
-(package! posframe)
+;; :lang javascript otherwise falls back to Tide's TypeScript server.
+;; Keep its language modes and standalone Flycheck checkers, not the server.
+(package! tide :disable t)
 
 ;; justfiles, don't abuse the make
 (package! just-mode)

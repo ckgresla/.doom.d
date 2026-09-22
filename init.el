@@ -97,9 +97,7 @@
        ;;ein               ; tame Jupyter notebooks with emacs
        (eval +overlay)     ; run code, run (also, repls)
        lookup              ; navigate your code and its documentation
-       ;; NOTE: eglot has an ugly gD binding, lsp basic
-       ;; seems more jive-able, even if shit on remote...
-       lsp               ; M-x vscode
+       ;; Language modes + :checkers syntax; no language-server module.
        magit             ; a git porcelain for Emacs
                          ; one could also add "forge" support, looks very nice, one day- https://gist.github.com/Azeirah/542f1db12e3ef904abfc7e9c2e83310e
        ssh               ; tis secure
@@ -118,7 +116,7 @@
        :lang
        ;;agda              ; types of types of types of types...
        ;;beancount         ; mind the GAAP
-       (cc +lsp)         ; C > C++ == 1
+       cc                ; C > C++ == 1
        ;;clojure           ; java with a lisp
        ;;common-lisp       ; if you've seen one lisp, you've seen them all
        ;;coq               ; proofs-as-programs
@@ -129,7 +127,7 @@
        ;;dhall
        ;;elixir            ; erlang done right
        ;;elm               ; care for a cup of TEA?
-       (emacs-lisp +lsp)        ; drown in parentheses
+       emacs-lisp        ; drown in parentheses
        ;;erlang            ; an elegant language for a more civilized age
        ;;ess               ; emacs speaks statistics
        ;;factor
@@ -140,12 +138,12 @@
        ;;gdscript          ; the language you waited for
        ;;(go +lsp)         ; the hipster dialect
        ;;(graphql +lsp)    ; Give queries a REST
-       (haskell +lsp)    ; a language that's lazier than I am
+       haskell           ; a language that's lazier than I am
        ;;hy                ; readability of scheme w/ speed of python
        ;;idris             ; a language you can depend on
        json              ; At least it ain't XML
        ;;(java +lsp)       ; the poster child for carpal tunnel syndrome
-       (javascript +lsp)        ; all(hope(abandon(ye(who(enter(here))))))
+       javascript        ; all(hope(abandon(ye(who(enter(here))))))
        ;;julia             ; a better, faster MATLAB
        ;;kotlin            ; a better, slicker Java(Script)
        ;;latex             ; writing papers in Emacs has never been so fun
@@ -161,14 +159,14 @@
        ;;plantuml          ; diagrams for confusing people more
        ;;graphviz          ; diagrams for confusing yourself even more
        ;;purescript        ; javascript, but functional
-       (python +lsp +pyright +conda)  ; beautiful is better than ugly
+       (python +conda)   ; beautiful is better than ugly
        ;;qt                ; the 'cutest' gui framework ever
        ;;racket            ; a DSL for DSLs
        ;;raku              ; the artist formerly known as perl6
        ;;rest              ; Emacs as a REST client
        ;;rst               ; ReST in peace
-       (ruby +rails +lsp)     ; 1.step {|i| p "Ruby is #{i.even? ? 'love' : 'life'}"}
-       (rust +lsp)       ; Fe2O3.unwrap().unwrap().unwrap().unwrap()
+       (ruby +rails)     ; 1.step {|i| p "Ruby is #{i.even? ? 'love' : 'life'}"}
+       rust              ; Fe2O3.unwrap().unwrap().unwrap().unwrap()
        ;;scala             ; java, but good
        ;;(scheme +guile)   ; a fully conniving family of lisps
        sh                ; she sells {ba,z,fi}sh shells on the C xor
@@ -176,7 +174,7 @@
        ;;solidity          ; do you need a blockchain? No.
        ;;swift             ; who asked for emoji variables?
        ;;terra             ; Earth and Moon in alignment for performance.
-       (web +lsp)               ; the tubes
+       web               ; the tubes
        yaml              ; JSON, but readable
        ;; zig               ; C, but simpler
 
