@@ -46,6 +46,28 @@ diagonal drags move both axes. Small horizontal motions accumulate rather than
 being discarded (Emacs displays horizontal offsets in frame-character steps).
 Panning is bounded to the page and resets when zooming back to fit-width.
 
+Zoomed-page scrolling uses the full rendered page height and a window-local
+pixel offset. It does not infer a page boundary from the visible portion of
+an image: on a page taller than the screen, that used to advance the page
+index early or jump back during redisplay. Both directions preserve the
+remaining distance across page boundaries, including mixed page sizes and
+multiple touch events before a redraw. Scrolling stops at the document edges.
+
+Single-finger flicks continue with a short, decaying momentum glide. Velocity
+comes from the last 120 ms of device event timestamps; holding before release,
+taps, canceled touches and pinches do not launch a glide. New touch/key input,
+changing buffers, and document edges stop it. Timer updates target 60 Hz, but
+actual redraw rate depends on rendering; delayed frames cannot cause large
+catch-up jumps. Horizontal momentum uses the same bounded pan as dragging.
+Set `my/android-pdf-momentum-enabled` to `nil` to disable momentum.
+
+To reduce reversal stutter, roll retains at most one already-rendered page on
+each side of the visible pages. It does not eagerly render extra pages or retain
+the whole document. Zoom/theme redraw invalidates these neighbors. Detached
+native images are still flushed promptly; explicit garbage collection waits
+for two seconds of idle time and does not run during a momentum glide. First
+display of a new PDF page still renders synchronously and can briefly pause.
+
 ## Renderer installation
 
 Install the build dependencies in the compatible Termux installation:

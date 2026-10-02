@@ -6,6 +6,11 @@
 ;; Additional glyph coverage, without replacing Inter or JetBrains Mono NL.
 (load! "+android-fonts")
 
+;; Doom skips fontification when input was pending at command start.  Android
+;; IME actions can then leave a newly displayed buffer plain until the next
+;; command.  Restore Emacs's default; keep normal JIT/scrolling behavior intact.
+(setq redisplay-skip-fontification-on-input nil)
+
 ;; ----- Termux <-> Android Emacs bridge -----------------------------
 ;; com.termux and org.gnu.emacs share a UID on this device, so Emacs can use
 ;; Termux binaries directly.  Do not export Termux's library directory:
@@ -16,12 +21,82 @@
     (add-to-list 'exec-path termux-bin)
     (setenv "PATH" (concat termux-bin ":" (or (getenv "PATH") "")))
     (setenv "LD_LIBRARY_PATH" nil)
+    ;; Native Android's /system/bin/sh can fail to launch Termux commands
+    ;; from Emacs (e.g. Projectile's fd indexing exits 127).  Use the shell
+    ;; from the same shared-UID installation as those command-line tools.
+    (when (file-executable-p (concat termux-bin "/sh"))
+      (setq shell-file-name (concat termux-bin "/sh")))
     (unless (getenv "TMPDIR")
       (setenv "TMPDIR" (concat termux-prefix "/tmp")))))
+
+;; The phone is for reading and light editing, without background diagnostics.
+;; Keep desktop Flycheck available; language servers are disabled globally.
+(setq flycheck-global-modes nil)
+(remove-hook 'doom-first-buffer-hook #'global-flycheck-mode)
+(remove-hook 'python-mode-hook #'flycheck-mode)
+(after! flycheck
+  (global-flycheck-mode -1))
+
+;; Also guard older phone module selections that still enable the dispatcher.
+(advice-add 'lsp! :override #'ignore)
 
 ;; Gboard accessory controls live in a separate Android-only module so their
 ;; implementation and image assets can be versioned with this Doom config.
 (load! "+android-keybar")
+
+;; Android IME text insertion is separate from Emacs input methods.  Keep it
+;; disabled in Evil command states, restoring each buffer's own preference
+;; when returning to an input state (including minibuffer `action' style).
+(defvar-local my/android-evil-saved-conversion-style nil)
+(defun my/android-evil-sync-conversion ()
+  "Keep Android text conversion consistent with this buffer's Evil state."
+  (when (fboundp 'set-text-conversion-style)
+    (if (and (bound-and-true-p evil-local-mode)
+             (not (evil-state-property evil-state :input-method)))
+        (progn
+          (unless my/android-evil-saved-conversion-style
+            (setq my/android-evil-saved-conversion-style
+                  (cons t text-conversion-style)))
+          (when text-conversion-style
+            (set-text-conversion-style nil)))
+      (when my/android-evil-saved-conversion-style
+        (let ((style (cdr my/android-evil-saved-conversion-style)))
+          (setq my/android-evil-saved-conversion-style nil)
+          (set-text-conversion-style style))))))
+
+(after! evil
+  (dolist (state '(normal insert visual replace operator motion emacs))
+    (add-hook (intern (format "evil-%s-state-entry-hook" state))
+              #'my/android-evil-sync-conversion))
+  (add-hook 'evil-local-mode-hook #'my/android-evil-sync-conversion))
+
+;; Major-mode setup can reset buffer-local text conversion *after* Evil has
+;; already entered normal state.  Real file visits/reverts must reconcile it
+;; too; state-entry hooks alone only covered manually toggling Evil states.
+(add-hook 'after-change-major-mode-hook #'my/android-evil-sync-conversion t)
+(add-hook 'find-file-hook #'my/android-evil-sync-conversion t)
+(add-hook 'after-revert-hook #'my/android-evil-sync-conversion t)
+
+;; This personal knowledge file intentionally contains long lines.  Keep its
+;; Org features instead of Doom's automatic large/long-file fallback; leave
+;; the safeguard enabled for every other file.  Set the predicate before
+;; so-long's post-major-mode check, including on file visits and reverts.
+(defun my/android-info-org-keep-org-mode ()
+  "Exempt ~/life/org/info.org from automatic so-long activation."
+  (when (and buffer-file-name
+             (equal (expand-file-name buffer-file-name)
+                    (expand-file-name "~/life/org/info.org")))
+    (require 'so-long)
+    (setq-local so-long-predicate #'ignore)))
+(add-hook 'org-mode-hook #'my/android-info-org-keep-org-mode)
+
+;; Emacs 32's minibuffer-mode can bypass evil-collection's older map list.
+;; Preserve its two-stage Escape convention for hardware and toolbar alike.
+(defun my/android-evil-minibuffer-setup ()
+  (when (bound-and-true-p evil-local-mode)
+    (evil-local-set-key 'normal [escape] #'abort-recursive-edit)
+    (my/android-evil-sync-conversion)))
+(add-hook 'minibuffer-setup-hook #'my/android-evil-minibuffer-setup t)
 
 ;; A touchscreen press on the modeline can enter `mouse-drag-mode-line', but
 ;; Android occasionally omits the matching release event.  Emacs then waits in
@@ -62,14 +137,18 @@
 
 
 ;; `recentf-cleanup' replaces Projectile's own status text, which makes
-;; `SPC p i' look like a no-op on the phone.  Restore durable confirmation.
+;; `SPC p i' look like a no-op.  Confirm explicit requests, not internal calls
+;; from Magit (which intentionally bind projectile-verbose to nil).
 (after! projectile
   (defun my/android-projectile-invalidate-cache-feedback (&rest _)
-    (message "Projectile cache invalidated."))
+    (when (called-interactively-p 'interactive)
+      (message "Projectile cache invalidated.")))
   (unless (advice-member-p #'my/android-projectile-invalidate-cache-feedback
                            #'projectile-invalidate-cache)
     (advice-add #'projectile-invalidate-cache :after
                 #'my/android-projectile-invalidate-cache-feedback)))
+
+(load! "+android-git")
 
 ;; ----- Android content:// materialization -------------------------
 ;; Android Intents appear as /content/... virtual paths readable only through
@@ -557,4 +636,68 @@
   (menu-bar--display-line-numbers-mode-none))
 
 ;; Dashboard is oversized on the phone's high-density display.
-(add-hook! '+doom-dashboard-mode-hook (text-scale-set -2))
+(defun my/android-dashboard-text-scale ()
+  (text-scale-set -2))
+;; Doom 2.1 renamed +doom-dashboard-mode to +dashboard-mode.
+(add-hook '+doom-dashboard-mode-hook #'my/android-dashboard-text-scale)
+(add-hook '+dashboard-mode-hook #'my/android-dashboard-text-scale)
+
+(defun my/android-dashboard-banner ()
+  "Use a compact banner when Doom's ASCII logo cannot fit the phone."
+  (let ((banner (+dashboard-draw-ascii-banner-fn)))
+    (if (> (apply #'max
+                  (mapcar (lambda (line)
+                            (string-pixel-width line (current-buffer)))
+                          (split-string banner "\n")))
+           (- (window-body-width nil t) (* 2 (frame-char-width))))
+        (propertize "D O O M\nE M A C S" 'face '+dashboard-banner)
+      banner)))
+(when (boundp '+dashboard-ascii-banner-fn)
+  (setq +dashboard-ascii-banner-fn #'my/android-dashboard-banner))
+
+;; Doom's newer dashboard measures strings without their buffer's face
+;; remapping, then subtracts half that unscaled width from screen center.
+;; At -2 zoom this clips the banner leftward and offsets the menu.  Measure
+;; the rendered font, retaining fractional frame columns for pixel accuracy.
+(defun my/android-dashboard-maxlen (text)
+  "Return TEXT's scaled maximum line width in frame character units."
+  (/ (float (string-pixel-width text (current-buffer)))
+     (frame-char-width)))
+(when (fboundp '+dashboard-maxlen)
+  (advice-add '+dashboard-maxlen :override #'my/android-dashboard-maxlen))
+
+(defun my/android-dashboard-refresh-after-zoom ()
+  "Refresh dashboard alignment after zoom, outside the current redraw."
+  (when (derived-mode-p '+dashboard-mode)
+    (+dashboard-reload-frame-h (selected-frame))))
+(add-hook 'text-scale-mode-hook #'my/android-dashboard-refresh-after-zoom)
+
+;; Android's home screen is a wordmark, not a menu; desktop stays unchanged.
+(load! "+android-dashboard")
+
+;; Permit Gboard in read-only buffers such as the dashboard and help screens.
+(setq touch-screen-display-keyboard t)
+
+(defun my/android-read-agenda-key (&optional prompt _inherit-input-method seconds)
+  "Read an agenda choice through the normal keybar input decoders."
+  (let (event)
+    (while (not (characterp event))
+      (setq event (if seconds
+                      (with-timeout (seconds nil) (read-key prompt))
+                    (read-key prompt)))
+      (when (memq event '(escape 27 7))
+        (keyboard-quit))
+      (when (and seconds (null event))
+        (setq event 7)))
+    event))
+
+(defun my/android-agenda-keyboard (original &rest args)
+  "Show Gboard and decode toolbar keys in Org's single-key dispatcher."
+  (frame-toggle-on-screen-keyboard (selected-frame) nil)
+  (cl-letf (((symbol-function 'read-char-exclusive)
+             #'my/android-read-agenda-key))
+    (apply original args)))
+
+(after! org-agenda
+  (advice-add 'org-agenda-get-restriction-and-command :around
+              #'my/android-agenda-keyboard))

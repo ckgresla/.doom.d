@@ -50,6 +50,9 @@
 
 
 ;; CKG Packages
+;; SPC t m must not depend on a particular Doom release bundling this.
+(package! hide-mode-line)
+
 ;; (package! conda)
 (package! flycheck-mypy)
 

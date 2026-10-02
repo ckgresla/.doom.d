@@ -224,8 +224,8 @@
       (user-error "Current buffer is not visiting a file or directory"))))
 
 (map! :leader
-      (:prefix ("f" . "file")
-       :desc "Yank buffer full path" "y" #'ckg/yank-buffer-or-dir-full-path))
+      ;; Extend Doom's existing file menu without replacing its named keymap.
+      :desc "Yank buffer full path" "f y" #'ckg/yank-buffer-or-dir-full-path)
 
 
 ;; global text scaling that persists across buffers
@@ -667,9 +667,11 @@
 
 
 ;;; --- gpg / encrypted org ---------------------------------------------------
-;; personal.org.gpg is symmetrically encrypted (no keypair), so prompt in the
-;; minibuffer instead of an external pinentry.
+;; Prompt inside Emacs for files that still use symmetric encryption.
 (setq epg-pinentry-mode 'loopback)
+
+;; Personal notes use the shared key; all other encrypted files stay unchanged.
+(load! "+personal-crypto")
 
 ;; Ask once on open; reuse that passphrase when saving, so writing the file
 ;; doesn't re-prompt or demand confirmation.
@@ -768,6 +770,7 @@
 
 ;; Shared writing views: SPC t x (monospace), SPC t n (variable font).
 (load! "+writing")
+(load! "+life-sync")
 
 ;; Android-only configuration lives in +android.el. Loaded only when
 ;; running inside the Android Emacs app, so the same .doom.d works on

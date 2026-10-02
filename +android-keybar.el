@@ -30,13 +30,39 @@
   (defvar my/android-keybar-hidden nil
     "Non-nil when the Android modifier bar is completely hidden.")
 
+  (defvar my/android-keybar-manually-hidden nil
+    "Keep the bar hidden until the next detected keyboard opening.")
+  (defvar my/android-keybar-keyboard-visible nil)
+  (defvar my/android-keybar-visibility-timer nil)
+
   (defvar my/android-keybar-flashed-buttons nil
     "Literal key buttons currently showing momentary press feedback.")
 
   (defvar my/android-keybar-flash-timer nil)
 
   (defvar my/android-keybar-saved-translation nil)
-  (defvar my/android-keybar-saved-text-conversion-style nil)
+  (defvar my/android-keybar-saved-conversion-override nil)
+  (defvar my/android-keybar-scale 1.0)
+  (defvar my/android-keybar-vertical-padding 55
+    "Extra pixels above and below each key's clickable image.
+Together with the fitted 80px images this keeps 190px targets on the Galaxy.
+The source images themselves are now 1.5 times taller, without stretching
+the key labels; padding alone would enlarge only the invisible touch target.")
+
+  (defun my/android-keybar-image-scale ()
+    "Fit the accessory keys on one row at the current frame width."
+    (let ((width 0))
+      (dolist (asset (append '("spacer.png" "light/collapse.png")
+                             (mapcar (lambda (button)
+                                       (format "light/idle/%s.png" (nth 3 button)))
+                                     my/android-keybar-buttons)))
+        (cl-incf width
+                 (car (image-size
+                       (create-image (expand-file-name asset my/android-keybar-image-root)
+                                     'png nil :scale 1.0) t))))
+      (min 1.0 (/ (float (max 1 (- (frame-pixel-width)
+                                   (* 2 (frame-char-width)))))
+                  (max 1 width)))))
 
   (defun my/android-keybar-dark-p ()
     (or (eq (frame-parameter nil 'background-mode) 'dark)
@@ -58,7 +84,7 @@
               (my/android-keybar-state modifier name)
               name)
       my/android-keybar-image-root)
-     'png nil :ascent 'center :scale 1.0))
+     'png nil :ascent 'center :scale my/android-keybar-scale))
 
   (defun my/android-keybar-hide-image ()
     (create-image
@@ -66,7 +92,7 @@
       (format "%s/collapse.png"
               (if (my/android-keybar-dark-p) "dark" "light"))
       my/android-keybar-image-root)
-     'png nil :ascent 'center :scale 1.0))
+     'png nil :ascent 'center :scale my/android-keybar-scale))
 
   (defun my/android-keybar-build-map ()
     (let ((map (make-sparse-keymap)))
@@ -77,7 +103,8 @@
                     :image ,(create-image
                              (expand-file-name "spacer.png"
                                                my/android-keybar-image-root)
-                             'png nil :ascent 'center :scale 1.0)))
+                             'png nil :ascent 'center
+                             :scale my/android-keybar-scale)))
       (dolist (button my/android-keybar-buttons)
         (pcase-let ((`(,name ,label ,modifier ,asset) button))
           (define-key-after
@@ -94,14 +121,24 @@
         map [collapse]
         `(menu-item "Hide key buttons"
                     ignore
-                    :help "Hide key buttons until Gboard is opened again"
+                    :help "Hide key buttons until the keyboard is reopened"
                     :image ,(my/android-keybar-hide-image)))
       map))
 
   (defun my/android-keybar-refresh ()
+    (set-frame-parameter nil 'my/android-keybar-width (frame-pixel-width))
+    (setq my/android-keybar-scale (my/android-keybar-image-scale))
     (setq secondary-tool-bar-map (my/android-keybar-build-map))
     (force-mode-line-update t)
     (redisplay))
+
+  (defun my/android-keybar-resize (frame)
+    "Refit the bar after a resolution or orientation change on FRAME."
+    (when (and (frame-live-p frame)
+               (not (equal (frame-parameter frame 'my/android-keybar-width)
+                           (frame-pixel-width frame))))
+      (with-selected-frame frame (my/android-keybar-refresh))))
+  (add-hook 'window-size-change-functions #'my/android-keybar-resize)
 
   (defun my/android-keybar-flash-button (name)
     "Briefly show literal button NAME in the blue pressed state."
@@ -184,16 +221,21 @@
         (progn
           (my/android-keybar-enable-lock-translation)
           (when (fboundp 'set-text-conversion-style)
-            (unless my/android-keybar-saved-text-conversion-style
-              (setq my/android-keybar-saved-text-conversion-style
-                    (cons t text-conversion-style)))
-            (set-text-conversion-style nil)))
+            ;; Locks are global, but text-conversion-style belongs to a buffer.
+            ;; Never restore one buffer's insertion style into another (Dired
+            ;; must keep receiving command keys even after a buffer switch).
+            (unless my/android-keybar-saved-conversion-override
+              (setq my/android-keybar-saved-conversion-override
+                    (cons t overriding-text-conversion-style)))
+            (setq overriding-text-conversion-style nil)
+            (set-text-conversion-style text-conversion-style t)))
       (my/android-keybar-disable-lock-translation)
       (when (and (fboundp 'set-text-conversion-style)
-                 my/android-keybar-saved-text-conversion-style)
-        (set-text-conversion-style
-         (cdr my/android-keybar-saved-text-conversion-style) t)
-        (setq my/android-keybar-saved-text-conversion-style nil))))
+                 my/android-keybar-saved-conversion-override)
+        (setq overriding-text-conversion-style
+              (cdr my/android-keybar-saved-conversion-override)
+              my/android-keybar-saved-conversion-override nil)
+        (set-text-conversion-style text-conversion-style t))))
 
   (defun my/android-keybar-toggle-lock (modifier)
     (if (memq modifier my/android-keybar-locked-modifiers)
@@ -263,7 +305,7 @@
                  (my/android-keybar-apply-modifiers
                   event my/android-keybar-armed-modifiers))))
           (setq my/android-keybar-armed-modifiers nil)
-          (unless my/android-keybar-locked-modifiers
+          (progn
             (when (and (fboundp 'set-text-conversion-style)
                        (not (eq old-text-conversion-style
                                 text-conversion-style)))
@@ -278,6 +320,7 @@
     "Return a decoder that flashes NAME and emits literal EVENT."
     (lambda (_prompt)
       (my/android-keybar-flash-button name)
+      ;; Match the hardware key; context-specific behavior belongs in keymaps.
       (vector event)))
 
   (defun my/android-keybar-movement-decoder (_prompt)
@@ -299,8 +342,9 @@
       (my/android-keybar-sync-lock)
       (my/android-keybar-refresh)))
 
-  (defun my/android-keybar-hide ()
-    "Hide the native accessory row until the keyboard is requested again."
+  (defun my/android-keybar-hide (&optional automatic)
+    "Hide the entire row.  AUTOMATIC does not set the manual Hide latch."
+    (unless automatic (setq my/android-keybar-manually-hidden t))
     (setq my/android-keybar-hidden t)
     (modifier-bar-mode -1)
     ;; The secondary modifier bar is hosted by the native tool-bar container.
@@ -310,18 +354,71 @@
     (force-mode-line-update t)
     (redisplay))
 
-  (defun my/android-keybar-show-with-keyboard (frame hide)
-    "Restore the keybar when the on-screen keyboard is shown for FRAME.
-HIDE is the second argument of `frame-toggle-on-screen-keyboard'."
-    (when (and my/android-keybar-hidden (not hide))
-      ;; Cycling `tool-bar-mode' recreates Android's native toolbar state and
-      ;; can discard the input decoder entries and layout parameters.  Run the
-      ;; complete installer so modifier chords, state images, and geometry are
-      ;; restored as one unit.
-      (my/android-keybar-install)))
+  (defun my/android-keybar-update-visibility (visible)
+    "Apply detected keyboard VISIBLE state, preserving a manual Hide latch."
+    (when (and visible (not my/android-keybar-keyboard-visible))
+      (setq my/android-keybar-manually-hidden nil))
+    (setq my/android-keybar-keyboard-visible visible)
+    (if (and visible (not my/android-keybar-manually-hidden))
+        (when my/android-keybar-hidden (my/android-keybar-install))
+      (unless my/android-keybar-hidden (my/android-keybar-hide t))))
+
+  (defun my/android-keybar-keyboard-geometry (height baseline visible)
+    "Detect a docked keyboard from outer HEIGHT and closed BASELINE.
+Use hysteresis to ignore system-bar changes and intermediate resize events.
+VISIBLE is the previous state.  No inner window or toolbar sizes are used."
+    (< height (- baseline (if visible
+                              (max 48 (* 0.03 baseline))
+                            (max 96 (* 0.15 baseline))))))
+
+  (defun my/android-keybar-sync-visibility (&optional frame)
+    "Follow docked keyboard visibility using FRAME's native resize events.
+Emacs 31 does not expose Android's IME insets to Lisp.  This therefore targets
+the normal full-screen, docked-keyboard layout, not floating IMEs or split-screen."
+    (setq frame (or frame (selected-frame)))
+    (when (and (frame-live-p frame) (frame-visible-p frame))
+      (with-selected-frame frame
+        (let* ((height (frame-pixel-height frame))
+               (geometry (alist-get 'geometry (frame-monitor-attributes frame)))
+               (layout (list (frame-pixel-width frame) geometry))
+               (baselines (frame-parameter frame 'my/android-keybar-baselines))
+               (baseline (alist-get layout baselines nil nil #'equal))
+               (known-baseline baseline)
+               (previous-visible (and baseline my/android-keybar-keyboard-visible)))
+          ;; A new orientation has its own baseline.  Monitor height includes
+          ;; system bars, but the opening threshold comfortably excludes them.
+          (unless baseline
+            (setq baseline (or (nth 3 geometry) height)))
+          (let ((visible (my/android-keybar-keyboard-geometry
+                          height baseline previous-visible)))
+            ;; Never chase an opening animation downwards: a succession of
+            ;; small height decreases must still cross the original baseline.
+            (unless visible
+              (setq baseline (if known-baseline (max baseline height) height)))
+            ;; A physical-monitor estimate is not yet a measured closed frame.
+            ;; Keep the wider threshold until we actually observe it closed.
+            (when (or known-baseline (not visible))
+              (setf (alist-get layout baselines nil nil #'equal) baseline))
+            (set-frame-parameter frame 'my/android-keybar-baselines baselines)
+            (my/android-keybar-update-visibility visible))))))
+
+  (defun my/android-keybar-schedule-visibility (&optional frame)
+    "Coalesce visibility changes outside redisplay's window-size hooks."
+    (when (timerp my/android-keybar-visibility-timer)
+      (cancel-timer my/android-keybar-visibility-timer))
+    (setq my/android-keybar-visibility-timer
+          (run-at-time 0 nil
+                       (lambda (frame)
+                         (setq my/android-keybar-visibility-timer nil)
+                         (my/android-keybar-sync-visibility frame))
+                       (or frame (selected-frame)))))
+
+  (defun my/android-keybar-keyboard-request (frame _hide)
+    "Sample FRAME before an IME request; the subsequent resize confirms it."
+    (my/android-keybar-schedule-visibility frame))
 
   (defun my/android-keybar-hide-decoder (_prompt)
-    "Hide the accessory row until Gboard is requested again."
+    "Hide the accessory row until the keyboard closes and reopens."
     (my/android-keybar-hide)
     [ignore])
 
@@ -334,15 +431,17 @@ HIDE is the second argument of `frame-toggle-on-screen-keyboard'."
           (setq tool-bar-map empty-map)))))
 
   (defun my/android-keybar-install ()
-    (setq my/android-keybar-hidden nil)
-    (setq tool-bar-button-margin '(0 . 4)
+    (setq my/android-keybar-hidden
+          (not (and my/android-keybar-keyboard-visible
+                    (not my/android-keybar-manually-hidden))))
+    (setq tool-bar-button-margin (cons 0 my/android-keybar-vertical-padding)
           tool-bar-button-relief 0
           tool-bar-always-show-default t
           android-intercept-control-space t)
     (when (boundp 'tool-bar-position)
       (customize-set-variable 'tool-bar-position 'bottom))
-    (tool-bar-mode 1)
-    (modifier-bar-mode 1)
+    (tool-bar-mode (if my/android-keybar-hidden -1 1))
+    (modifier-bar-mode (if my/android-keybar-hidden -1 1))
     ;; Decoder commands return this synthetic event when a toolbar action has
     ;; already done all its work.  Bind it explicitly so Doom consumes it
     ;; silently instead of reporting "<ignore> is undefined".
@@ -370,10 +469,15 @@ HIDE is the second argument of `frame-toggle-on-screen-keyboard'."
     (run-at-time 0.1 nil #'my/android-keybar-install))
 
   (my/android-keybar-install)
-  (unless (advice-member-p #'my/android-keybar-show-with-keyboard
-                           #'frame-toggle-on-screen-keyboard)
-    (advice-add #'frame-toggle-on-screen-keyboard :before
-                #'my/android-keybar-show-with-keyboard))
+  ;; Remove the old request-only behavior when hot-reloading this file.
+  (advice-remove #'frame-toggle-on-screen-keyboard
+                 #'my/android-keybar-show-with-keyboard)
+  (advice-add #'frame-toggle-on-screen-keyboard :before
+              #'my/android-keybar-keyboard-request)
+  (add-hook 'window-size-change-functions #'my/android-keybar-schedule-visibility)
+  (add-function :after after-focus-change-function
+                #'my/android-keybar-schedule-visibility)
+  (my/android-keybar-schedule-visibility)
   (add-hook 'doom-load-theme-hook #'my/android-keybar-apply-theme)
   ;; Some packages repopulate `tool-bar-map' while Doom is reloading.  Run the
   ;; full installer once more at the end so only the Gboard accessory row

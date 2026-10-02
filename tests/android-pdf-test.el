@@ -595,4 +595,160 @@
             (should (eq (selected-window) other))
             (should (equal calls (list (list 0 window))))))))))
 
+(defun android-pdf-test-scroll-sequence (heights page offset deltas)
+  "Scroll synthetic HEIGHTS from PAGE/OFFSET by DELTAS without redisplay."
+  (load android-pdf-test-config nil t)
+  (save-window-excursion
+    (with-temp-buffer
+      (switch-to-buffer (current-buffer))
+      (insert (make-string (* 4 (length heights)) ?\s))
+      (let ((props (list (cons 'page page) (cons 'vscroll offset)))
+            states)
+        (cl-letf (((symbol-function 'image-mode-window-get)
+                   (lambda (key &optional _window) (alist-get key props)))
+                  ((symbol-function 'image-mode-window-put)
+                   (lambda (key value &optional _window)
+                     (setf (alist-get key props) value)))
+                  ((symbol-function 'pdf-cache-number-of-pages)
+                   (lambda () (length heights)))
+                  ((symbol-function 'pdf-roll-display-page)
+                   (lambda (n _window) (nth (1- n) heights)))
+                  ((symbol-function 'pdf-roll-page-to-pos)
+                   (lambda (n) (- (* n 4) 3)))
+                  ((symbol-function 'pdf-roll-set-vscroll)
+                   (lambda (n _window) (setf (alist-get 'vscroll props) n)))
+                  ((symbol-function 'window-body-height) (lambda (&rest _) 800))
+                  ;; Clipped geometry must never determine page transitions.
+                  ((symbol-function 'pos-visible-in-window-p)
+                   (lambda (&rest _) (ert-fail "Used clipped page geometry"))))
+          (dolist (delta deltas)
+            (my/android-pdf-roll-scroll-forward delta (selected-window) t)
+            (push (list (alist-get 'page props) (alist-get 'vscroll props)) states))
+          (list (nreverse states) (alist-get 'displayed-pages props)))))))
+
+(ert-deftest android-pdf-tall-page-does-not-advance-at-viewport-edge ()
+  (should (equal (car (android-pdf-test-scroll-sequence
+                      '(3000 2400 3200) 1 0 '(700 700 700 700 250)))
+                 '((1 700) (1 1400) (1 2100) (1 2800) (2 50)))))
+
+(ert-deftest android-pdf-page-crossing-reverses-without-losing-offset ()
+  (should (equal (car (android-pdf-test-scroll-sequence
+                      '(3000 2400 3200) 1 2990 '(30 -30 10 -1)))
+                 '((2 20) (1 2990) (2 0) (1 2999)))))
+
+(ert-deftest android-pdf-large-drag-tracks-crossed-images-for-retirement ()
+  (let ((result (android-pdf-test-scroll-sequence
+                 '(3000 2400 3200 4000) 1 0 '(5500 -5500))))
+    (should (equal (car result) '((3 100) (1 0))))
+    (should (equal (sort (cadr result) #'<) '(1 2 3)))))
+
+(ert-deftest android-pdf-scroll-clamps-document-edges ()
+  (should (equal (car (android-pdf-test-scroll-sequence
+                      '(3000 2400) 1 0 '(-100 10000 100 -100)))
+                 '((1 0) (2 1600) (2 1600) (2 1500))))
+  (should (equal (car (android-pdf-test-scroll-sequence '(400) 1 0 '(100)))
+                 '((1 0)))))
+
+(ert-deftest android-pdf-momentum-velocity-uses-device-time-and-is-bounded ()
+  (load android-pdf-test-config nil t)
+  (let ((my/android-pdf-motion-samples '((200 80 100) (100 100 300))))
+    (should (equal (my/android-pdf-release-velocity 210) '(200.0 . 2000.0)))
+    (should-not (my/android-pdf-release-velocity 301))
+    (should-not (my/android-pdf-release-velocity 199)))
+  (let ((my/android-pdf-motion-samples '((200 0 0) (100 0 1000))))
+    (should (= (cdr (my/android-pdf-release-velocity 200)) 4000.0)))
+  (let ((my/android-pdf-motion-samples '((200 0 0) (100 0 1))))
+    (should-not (my/android-pdf-release-velocity 200))))
+
+(ert-deftest android-pdf-momentum-release-rejects-pinch-cancel-and-tap ()
+  (load android-pdf-test-config nil t)
+  (with-temp-buffer
+    (let ((my/android-pdf-motion-samples '((200 0 0) (100 0 100)))
+          (my/android-pdf-motion-window (selected-window))
+          (pdf-view-roll-minor-mode t)
+          (my/pdf-raw-touch-moved t)
+          (my/pdf-raw-touch-points nil)
+          scheduled)
+      (cl-letf (((symbol-function 'run-at-time)
+                 (lambda (&rest _) (setq scheduled t))))
+        (dolist (scenario '(pinch canceled tap disabled))
+          (let ((my/android-pdf-motion-pinched (eq scenario 'pinch))
+                (my/pdf-raw-touch-moved (not (eq scenario 'tap)))
+                (my/android-pdf-momentum-enabled (not (eq scenario 'disabled))))
+            (my/android-pdf-motion-end
+             #'ignore (list 'touchscreen-end
+                            (cons 1 (list (selected-window) 1 '(0 . 0) 200))
+                            (eq scenario 'canceled)))))
+        (should-not scheduled)
+        (my/android-pdf-motion-end
+         #'ignore (list 'touchscreen-end
+                        (cons 1 (list (selected-window) 1 '(0 . 0) 200))))
+        (should scheduled)))))
+
+(ert-deftest android-pdf-momentum-decays-and-limits-render-catchup ()
+  (load android-pdf-test-config nil t)
+  (save-window-excursion
+    (with-temp-buffer
+      (switch-to-buffer (current-buffer))
+      (let ((pdf-view-roll-minor-mode t)
+            (my/android-pdf-momentum-velocity '(0.0 . 2000.0))
+            (my/android-pdf-momentum-time 1.0)
+            (offset 0))
+        (cl-letf (((symbol-function 'float-time) (lambda (&rest _) 2.0))
+                  ((symbol-function 'run-at-time) #'ignore)
+                  ((symbol-function 'image-mode-window-get)
+                   (lambda (prop &rest _) (if (eq prop 'page) 1 offset)))
+                  ((symbol-function 'my/android-pdf-scroll-pixels)
+                   (lambda (dy &rest _) (cl-incf offset dy))))
+          (my/android-pdf-momentum-step (current-buffer) (selected-window))
+          (should (= offset 100))
+          (should (< (cdr my/android-pdf-momentum-velocity) 2000))
+          ;; An edge that cannot move cancels the repeating timer.
+          (setq my/android-pdf-momentum-time 1.0)
+          (cl-letf (((symbol-function 'my/android-pdf-scroll-pixels) #'ignore))
+            (my/android-pdf-momentum-step (current-buffer) (selected-window)))
+          (should-not my/android-pdf-momentum-velocity))))))
+
+(ert-deftest android-pdf-momentum-stops-when-window-changes-buffer ()
+  (load android-pdf-test-config nil t)
+  (with-temp-buffer
+    (let ((pdf-view-roll-minor-mode t)
+          (my/android-pdf-momentum-velocity '(0 . 1000)))
+      (cl-letf (((symbol-function 'my/android-pdf-scroll-pixels)
+                 (lambda (&rest _) (ert-fail "Scrolled an unrelated buffer"))))
+        (my/android-pdf-momentum-step (current-buffer) (selected-window))
+        (should-not my/android-pdf-momentum-velocity)))))
+
+(ert-deftest android-pdf-neighbor-cache-is-bounded-and-invalidated-on-redraw ()
+  (load android-pdf-test-config nil t)
+  (cl-letf (((symbol-function 'pdf-cache-number-of-pages) (lambda () 10))
+            ((symbol-function 'pdf-roll-page-overlay) (lambda (page &rest _) page))
+            ((symbol-function 'overlay-get) (lambda (&rest _) '(image :type png))))
+    (should (equal (sort (my/android-pdf-retain-neighbors
+                         (lambda (&rest _) '(4 5)) 4) #'<) '(3 4 5 6)))
+    (should (equal (my/android-pdf-retain-neighbors
+                    (lambda (&rest _) '(4 5)) 4 nil t) '(4 5)))))
+
+(ert-deftest android-pdf-image-gc-waits-for-momentum ()
+  (load android-pdf-test-config nil t)
+  (with-temp-buffer
+    (let ((my/android-pdf-momentum-timer t) deferred collected)
+      (cl-letf (((symbol-function 'run-with-timer)
+                 (lambda (&rest _) (setq deferred t)))
+                ((symbol-function 'garbage-collect)
+                 (lambda () (setq collected t))))
+        (my/android-pdf-idle-image-gc)
+        (should deferred)
+        (should-not collected)))))
+
+(ert-deftest android-pdf-momentum-hooks-are-android-only ()
+  (dolist (platform '(darwin android))
+    (let ((system-type platform) (after-load-alist nil) targets)
+      (cl-letf (((symbol-function 'advice-add)
+                 (lambda (target &rest _) (push target targets))))
+        (load android-pdf-test-config nil t))
+      (dolist (target '(my/pdf-raw-touch-begin my/pdf-raw-touch-update
+                        my/pdf-raw-touch-end))
+        (should (eq (not (null (memq target targets))) (eq platform 'android)))))))
+
 (ert-run-tests-batch-and-exit "^android-pdf-")
