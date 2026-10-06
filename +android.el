@@ -64,11 +64,40 @@
           (setq my/android-evil-saved-conversion-style nil)
           (set-text-conversion-style style))))))
 
+;; Reproduced on Emacs 31.1 with Samsung Keyboard: raw Backspace finished
+;; normally, then native composition deleted [1,4) while point was still
+;; 19189.  Reset that composing state; do not mask it by restoring point.
+(defcustom my/android-ime-reset-after-backspace t
+  "Reset Android text composition after an interactive Evil Backspace.
+Work around the Emacs 31.1/Samsung keyboard interaction where a raw
+Backspace during composition lets the next word update replace text at
+the beginning of the buffer.  Keep the current non-nil conversion style;
+do not switch ordinary typing to raw keys.
+The reset can discard queued IME edits.  Set this to nil to disable the
+workaround.  Only `evil-delete-backward-char-and-join' is covered."
+  :type 'boolean
+  :group 'editing)
+
+(defun my/android-ime-reset-after-backspace-a (&rest _)
+  "Resynchronize composition after the observed raw Evil Backspace path."
+  (when (and (eq system-type 'android)
+             my/android-ime-reset-after-backspace
+             (eq this-command 'evil-delete-backward-char-and-join)
+             (called-interactively-p 'interactive)
+             (bound-and-true-p text-conversion-style)
+             (eq (bound-and-true-p overriding-text-conversion-style) 'lambda)
+             (fboundp 'set-text-conversion-style))
+    ;; This supported API forces a reset even when VALUE is unchanged.  A
+    ;; same-style reset ends stale composition without changing input mode.
+    (set-text-conversion-style text-conversion-style)))
+
 (after! evil
   (dolist (state '(normal insert visual replace operator motion emacs))
     (add-hook (intern (format "evil-%s-state-entry-hook" state))
               #'my/android-evil-sync-conversion))
-  (add-hook 'evil-local-mode-hook #'my/android-evil-sync-conversion))
+  (add-hook 'evil-local-mode-hook #'my/android-evil-sync-conversion)
+  (advice-add 'evil-delete-backward-char-and-join :after
+              #'my/android-ime-reset-after-backspace-a))
 
 ;; Major-mode setup can reset buffer-local text conversion *after* Evil has
 ;; already entered normal state.  Real file visits/reverts must reconcile it

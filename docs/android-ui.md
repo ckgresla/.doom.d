@@ -75,12 +75,36 @@ display; a real Org file opened through `SPC SPC` did too. The change is Android
 only. It does not eagerly fontify entire files, add timers, change themes, or
 alter `fast-but-imprecise-scrolling` / `jit-lock-defer-time`.
 
+## Backspace during keyboard composition
+
+On native Emacs 31.1 with Samsung Keyboard, typing a new word, pressing
+Backspace, and continuing could replace the beginning of the file. A live
+trace showed the raw Evil Backspace deleting at the correct position, then
+the next native composition update deleting a range at the start of the
+buffer while point was still in the original paragraph. This was data
+corruption, not a visual-wrap or cursor-restoration problem; it also occurred
+inside a bullet. The exact native request responsible has not been traced.
+
+`+android.el` resets the IME after an interactive
+`evil-delete-backward-char-and-join`, using the supported
+`set-text-conversion-style` API with the **unchanged** style. Normal composition
+and suggestions remain enabled. The workaround is Android-only, does not run
+for noninteractive deletions, and respects disabled conversion and explicit
+overrides such as the modifier row. Other Backspace command paths are unchanged.
+
+Resetting may discard queued IME edits, so rapid-typing checks must verify the
+resulting text as well as cursor position. To opt out, set
+`my/android-ime-reset-after-backspace` to `nil`. This is a targeted workaround
+for the reproduced input interaction, not a claim that every possible cursor
+jump has the same cause.
+
 ## Regression checks
 
 ```sh
 emacs --batch -Q -l tests/android-keybar-test.el
 emacs --batch -Q -l tests/android-dashboard-test.el
 emacs --batch -Q -l tests/android-config-test.el
+emacs --batch -Q -l tests/android-ime-backspace-test.el
 ```
 
 These suites also run with native Android Emacs. Live acceptance checks cover
