@@ -11,6 +11,63 @@ Set to nil to keep sync checkpoints local instead.")
   (expand-file-name "scripts/life-sync.sh"
                     (file-name-directory (or load-file-name buffer-file-name))))
 
+(defvar-local my/life-sync-window-configuration nil
+  "Window layout to restore when leaving the full-window sync log.")
+
+(define-derived-mode my/life-sync-mode special-mode "Life Sync"
+  "Read-only Life sync output.  Press q to restore the previous layout.")
+
+(defun my/life-sync-quit ()
+  "Restore the previous layout without killing the sync log or its process."
+  (interactive)
+  (let ((buffer (current-buffer))
+        (configuration my/life-sync-window-configuration))
+    (setq my/life-sync-window-configuration nil)
+    (if (and (window-configuration-p configuration)
+             (eq (window-configuration-frame configuration) (selected-frame)))
+        (progn
+          (set-window-configuration configuration)
+          (bury-buffer buffer))
+      (quit-window))))
+
+(define-key my/life-sync-mode-map (kbd "q") #'my/life-sync-quit)
+(define-key my/life-sync-mode-map [remap quit-window] #'my/life-sync-quit)
+
+(with-eval-after-load 'evil
+  (evil-set-initial-state 'my/life-sync-mode 'motion)
+  (evil-define-key '(normal motion) my/life-sync-mode-map
+    (kbd "q") #'my/life-sync-quit))
+
+(defun my/life-sync-show-log (buffer)
+  "Select BUFFER in a full-size ordinary window on the current frame."
+  (let* ((frame (selected-frame))
+         (configuration
+          (or (and (eq (window-buffer) buffer)
+                   (with-current-buffer buffer
+                     (and (window-configuration-p my/life-sync-window-configuration)
+                          (eq (window-configuration-frame my/life-sync-window-configuration)
+                              frame)
+                          my/life-sync-window-configuration)))
+              (current-window-configuration)))
+         (window (cl-find-if
+                  (lambda (candidate)
+                    (and (not (window-parameter candidate 'window-side))
+                         (not (window-dedicated-p candidate))))
+                  (window-list frame 'nomini))))
+    (unless window (user-error "No ordinary window available for Life sync"))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'my/life-sync-mode)
+        (my/life-sync-mode)))
+    (select-window window)
+    ;; Prefer the main window even when an old log is already in a side popup.
+    ;; The overriding action wins over Doom's popup rules for this call only.
+    (let ((display-buffer-overriding-action
+           '((display-buffer-same-window) (inhibit-same-window . nil)))
+          (ignore-window-parameters t))
+      (pop-to-buffer buffer)
+      (delete-other-windows))
+    (setq my/life-sync-window-configuration configuration)))
+
 (defun my/life-sync ()
   "Save, fetch, checkpoint tracked edits, rebase, and normally push ~/life.
 Refuse an existing staged index or in-progress Git operation. A failed rebase
@@ -40,9 +97,8 @@ in *Life sync*; all repository changes are explicit in that log."
             (and my/life-sync-include-new
                  (yes-or-no-p "Include ALL new, non-ignored Life files in this sync? "))))
       (with-current-buffer buffer
-        (let ((inhibit-read-only t)) (erase-buffer))
-        (special-mode))
-      (display-buffer buffer)
+        (let ((inhibit-read-only t)) (erase-buffer)))
+      (my/life-sync-show-log buffer)
       (setq my/life-sync-process
             (make-process
              :name "life-sync" :buffer buffer :noquery t
@@ -56,7 +112,6 @@ in *Life sync*; all repository changes are explicit in that log."
                (when (memq (process-status process) '(exit signal))
                  (if (zerop (process-exit-status process))
                      (message "Life sync complete; see *Life sync* for details")
-                   (display-buffer (process-buffer process))
                    (message "Life sync stopped; see *Life sync* (no forced resolution)")))))))))
 
 (map! :leader :desc "Sync Life repository" "g S" #'my/life-sync)

@@ -18,14 +18,14 @@
   (cl-letf (((symbol-function 'map!)
              (cons 'macro (lambda (&rest _) nil))))
     (load life-test-config nil t)))
-(defun life-test-command ()
-  "Capture the interactive command's argv without touching the real Life repo."
+(defun life-test-process-options ()
+  "Capture process options without touching the real Life repo or its windows."
   (let* ((root (expand-file-name "~/life/"))
          (default-directory root)
          (my/life-sync-process nil)
          (my/life-sync-include-new nil)
          (log (generate-new-buffer " *Life sync command test*"))
-         command)
+         options)
     (unwind-protect
         (cl-letf (((symbol-function 'file-truename) #'identity)
                   ((symbol-function 'locate-dominating-file)
@@ -34,14 +34,18 @@
                   ((symbol-function 'file-in-directory-p)
                    (lambda (&rest _) nil))
                   ((symbol-function 'get-buffer-create) (lambda (&rest _) log))
-                  ((symbol-function 'display-buffer) #'ignore)
+                  ((symbol-function 'my/life-sync-show-log) #'ignore)
                   ((symbol-function 'make-process)
                    (lambda (&rest args)
-                     (setq command (plist-get args :command))
+                     (setq options args)
                      nil)))
           (my/life-sync)
-          command)
+          options)
       (kill-buffer log))))
+
+(defun life-test-command ()
+  "Capture the interactive command's argv without touching the real Life repo."
+  (plist-get (life-test-process-options) :command))
 
 (ert-deftest life-sync-default-pushes-on-both-platforms ()
   ;; An unbound value proves the actual defvar default, not a test override.
@@ -64,6 +68,92 @@
     (dolist (platform '(darwin android))
       (let ((system-type platform))
         (should (equal (nth 4 (life-test-command)) "no"))))))
+
+(ert-deftest life-sync-log-fills-current-frame-and-q-restores-layout ()
+  (life-test-load-config)
+  (save-window-excursion
+    (let ((first (generate-new-buffer " *Life first*"))
+          (second (generate-new-buffer " *Life second*"))
+          (log (generate-new-buffer " *Life log*")))
+      (unwind-protect
+          (progn
+            (delete-other-windows)
+            (switch-to-buffer first)
+            (with-current-buffer first (insert "first\nsecond\nthird\n"))
+            (goto-char 8)
+            (set-window-buffer (split-window-right) second)
+            (let ((before (current-window-configuration))
+                  (display-buffer-alist
+                   '(("Life log" (display-buffer-in-side-window) (side . bottom)))))
+              (my/life-sync-show-log log)
+              (should (eq (current-buffer) log))
+              (should (= (length (window-list nil 'nomini)) 1))
+              (should-not (window-parameter nil 'window-side))
+              (should buffer-read-only)
+              (should (eq (key-binding (kbd "q")) #'my/life-sync-quit))
+              ;; Showing the same running log again must retain its return path.
+              (my/life-sync-show-log log)
+              (call-interactively (key-binding (kbd "q")))
+              (should (compare-window-configurations before (current-window-configuration)))
+              (should (eq (current-buffer) first))
+              (should (= (point) 8))
+              (should (buffer-live-p log))))
+        (mapc #'kill-buffer (list first second log))))))
+
+(ert-deftest life-sync-log-replaces-an-old-side-popup-with-a-main-window ()
+  (life-test-load-config)
+  (save-window-excursion
+    (let ((main (generate-new-buffer " *Life main*"))
+          (log (generate-new-buffer " *Life old popup*")))
+      (unwind-protect
+          (progn
+            (delete-other-windows)
+            (switch-to-buffer main)
+            (select-window
+             (display-buffer-in-side-window log '((side . bottom) (window-height . 0.25))))
+            (let ((before (current-window-configuration)))
+              (my/life-sync-show-log log)
+              (should (eq (current-buffer) log))
+              (should (= (length (window-list nil 'nomini)) 1))
+              (should-not (window-parameter nil 'window-side))
+              (my/life-sync-quit)
+              (should (compare-window-configurations before (current-window-configuration)))))
+        (mapc #'kill-buffer (list main log))))))
+
+(ert-deftest life-sync-log-has-evil-navigation-and-restoring-quit ()
+  ;; The base suite also runs without Doom packages; exercise real Evil when
+  ;; its package directories are provided on load-path (as in Doom itself).
+  (skip-unless (require 'evil nil t))
+  (life-test-load-config)
+  (with-temp-buffer
+    (my/life-sync-mode)
+    (evil-local-mode 1)
+    (should (eq evil-state 'motion))
+    (should (eq (key-binding (kbd "j")) #'evil-next-line))
+    (should (eq (key-binding (kbd "q")) #'my/life-sync-quit))
+    (evil-normal-state)
+    (should (eq (key-binding (kbd "q")) #'my/life-sync-quit))))
+
+(ert-deftest life-sync-completion-does-not-reopen-or-select-log ()
+  (life-test-load-config)
+  (let ((sentinel (plist-get (life-test-process-options) :sentinel)))
+    (dolist (exit-code '(0 1))
+      (with-temp-buffer
+        (let ((buffer (current-buffer))
+              (window (selected-window))
+              notice)
+          (cl-letf (((symbol-function 'process-status) (lambda (&rest _) 'exit))
+                    ((symbol-function 'process-exit-status) (lambda (&rest _) exit-code))
+                    ((symbol-function 'message)
+                     (lambda (format &rest args) (setq notice (apply #'format format args))))
+                    ((symbol-function 'display-buffer)
+                     (lambda (&rest _) (ert-fail "Completion reopened log")))
+                    ((symbol-function 'pop-to-buffer)
+                     (lambda (&rest _) (ert-fail "Completion selected log"))))
+            (funcall sentinel 'test-process "finished\n"))
+          (should (eq (current-buffer) buffer))
+          (should (eq (selected-window) window))
+          (should (string-match-p (if (zerop exit-code) "complete" "stopped") notice)))))))
 
 (defun life-test-git (dir &rest args)
   (let ((default-directory (file-name-as-directory dir)))
