@@ -9,10 +9,11 @@ It prompts to save modified Life buffers, then runs asynchronously:
    or `org: sync hackbook @ <timestamp>` on Mac, including the time zone.
 4. Rebase onto the fetched branch. On conflicts, abort: fetched refs and the
    local sync commit remain intact. No automatic conflict resolution or stash.
-5. Optionally push, without force. A push failure leaves local commits intact.
+5. Push, without force, after a successful rebase. A push failure leaves local
+   commits intact and reports the sync as stopped; no automatic retry or force.
 
-The default does **not** push and excludes untracked files. Configure
-`my/life-sync-push` to opt into pushing. `my/life-sync-include-new` enables an
+The default pushes and excludes untracked files. Set `my/life-sync-push` to
+`nil` to keep checkpoints local instead. `my/life-sync-include-new` enables an
 explicit confirmation before including new non-ignored files. Git output is
 in `*Life sync*`. Do not edit the repository while it is syncing. If a commit
 hook fails, Git's staged changes remain available to inspect and retry.

@@ -7,6 +7,64 @@
 (defconst life-test-script
   (expand-file-name "../scripts/life-sync.sh"
                     (file-name-directory (or load-file-name buffer-file-name))))
+(defconst life-test-config
+  (expand-file-name "../+life-sync.el"
+                    (file-name-directory (or load-file-name buffer-file-name))))
+(defvar my/life-sync-push)
+(defvar my/life-sync-process)
+(defvar my/life-sync-include-new)
+(defun life-test-load-config ()
+  ;; Exercise the real wrapper without needing Doom's keymap macro in batch.
+  (cl-letf (((symbol-function 'map!)
+             (cons 'macro (lambda (&rest _) nil))))
+    (load life-test-config nil t)))
+(defun life-test-command ()
+  "Capture the interactive command's argv without touching the real Life repo."
+  (let* ((root (expand-file-name "~/life/"))
+         (default-directory root)
+         (my/life-sync-process nil)
+         (my/life-sync-include-new nil)
+         (log (generate-new-buffer " *Life sync command test*"))
+         command)
+    (unwind-protect
+        (cl-letf (((symbol-function 'file-truename) #'identity)
+                  ((symbol-function 'locate-dominating-file)
+                   (lambda (&rest _) root))
+                  ((symbol-function 'save-some-buffers) #'ignore)
+                  ((symbol-function 'file-in-directory-p)
+                   (lambda (&rest _) nil))
+                  ((symbol-function 'get-buffer-create) (lambda (&rest _) log))
+                  ((symbol-function 'display-buffer) #'ignore)
+                  ((symbol-function 'make-process)
+                   (lambda (&rest args)
+                     (setq command (plist-get args :command))
+                     nil)))
+          (my/life-sync)
+          command)
+      (kill-buffer log))))
+
+(ert-deftest life-sync-default-pushes-on-both-platforms ()
+  ;; An unbound value proves the actual defvar default, not a test override.
+  (cl-progv '(my/life-sync-push) nil
+    (makunbound 'my/life-sync-push)
+    (life-test-load-config)
+    (should (eq my/life-sync-push t))
+    (dolist (platform '(darwin android))
+      (let* ((system-type platform)
+             (command (life-test-command)))
+        (should (equal (nth 3 command)
+                       (if (eq platform 'android) "galaxy" "hackbook")))
+        (should (equal (nth 4 command) "yes"))
+        (should (equal (nth 5 command) "no"))))))
+
+(ert-deftest life-sync-explicit-local-only-survives-reload ()
+  (let ((my/life-sync-push nil))
+    (life-test-load-config)
+    (should-not my/life-sync-push)
+    (dolist (platform '(darwin android))
+      (let ((system-type platform))
+        (should (equal (nth 4 (life-test-command)) "no"))))))
+
 (defun life-test-git (dir &rest args)
   (let ((default-directory (file-name-as-directory dir)))
     (with-temp-buffer
@@ -80,6 +138,19 @@
    (should-not (file-exists-p (expand-file-name ".git/rebase-merge" local)))
    (should-not (equal (life-test-git local "rev-parse" "HEAD")
                       (life-test-git remote "rev-parse" "main")))))
+
+(ert-deftest life-sync-push-rejection-keeps-local-checkpoint-and-remote ()
+  (life-test-repos
+   (let ((remote-tip (life-test-git remote "rev-parse" "main")))
+     (life-test-write remote "hooks/pre-receive" "#!/bin/sh\nexit 1\n")
+     (set-file-modes (expand-file-name "hooks/pre-receive" remote) #o700)
+     (life-test-write local "note.org" "local checkpoint\n")
+     (should-not (zerop (life-test-run local t)))
+     (should (equal (life-test-git local "show" "HEAD:note.org") "local checkpoint"))
+     (should (equal (life-test-git remote "rev-parse" "main") remote-tip))
+     (should-not (equal (life-test-git local "rev-parse" "HEAD") remote-tip))
+     (should (equal (life-test-git local "status" "--porcelain") ""))
+     (should-not (file-exists-p (expand-file-name ".git/life-sync.lock" local))))))
 
 (ert-deftest life-sync-refuses-preexisting-index ()
   (life-test-repos

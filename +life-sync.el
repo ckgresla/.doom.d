@@ -1,8 +1,9 @@
 ;;; +life-sync.el --- Explicit, repository-scoped Life sync -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
-(defvar my/life-sync-push nil
-  "Push after a successful Life sync. Never force-push.")
+(defvar my/life-sync-push t
+  "Push after a successful Life sync. Never force-push.
+Set to nil to keep sync checkpoints local instead.")
 (defvar my/life-sync-include-new nil
   "Offer to include untracked files in Life sync, with explicit confirmation.")
 (defvar my/life-sync-process nil)
@@ -11,9 +12,10 @@
                     (file-name-directory (or load-file-name buffer-file-name))))
 
 (defun my/life-sync ()
-  "Save, fetch, checkpoint tracked edits, and rebase ~/life without conflicts.
+  "Save, fetch, checkpoint tracked edits, rebase, and normally push ~/life.
 Refuse an existing staged index or in-progress Git operation. A failed rebase
-is aborted, retaining fetched refs and the local checkpoint. Show Git output
+is aborted, retaining fetched refs and the local checkpoint without pushing.
+Push only when `my/life-sync-push' is non-nil, and never force. Show Git output
 in *Life sync*; all repository changes are explicit in that log."
   (interactive)
   (let* ((root (file-truename (expand-file-name "~/life/")))
